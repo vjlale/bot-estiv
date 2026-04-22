@@ -1,0 +1,17 @@
+# Fly.io config para bot-estiv worker (ARQ)
+app = "bot-estiv-worker"
+primary_region = "gru"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[processes]
+  worker = "arq bot_estiv.schedulers.worker.WorkerSettings"
+
+[env]
+  APP_ENV = "production"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024

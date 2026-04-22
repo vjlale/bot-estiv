@@ -1,0 +1,45 @@
+{
+  "$schema_version": "1.0",
+  "description": "Catálogo explícito de productos/servicios de Gardens Wood. Esta es la única fuente de verdad sobre lo que la marca fabrica y ofrece. Los prompts de generación de imágenes y textos la consultan para NO inventar productos fuera de catálogo.",
+  "products": [
+    "pérgolas de madera",
+    "decks y tarimas exteriores",
+    "mesas de jardín",
+    "bancos y asientos exteriores",
+    "fogoneros / braseros",
+    "cercos y portones de madera",
+    "tumbonas y reposeras",
+    "revestimientos de madera"
+  ],
+  "materials": [
+    "quebracho colorado",
+    "quebracho blanco",
+    "eucaliptus grandis tratado"
+  ],
+  "services": [
+    "diseño a medida",
+    "paisajismo integral",
+    "instalación en obra",
+    "mantenimiento y restauración"
+  ],
+  "forbidden_in_prompts": [
+    "sillas mecedoras",
+    "hamacas paraguayas",
+    "casitas de juegos infantiles",
+    "muebles de interior",
+    "roperos o placares",
+    "estanterías de oficina",
+    "muebles de cocina",
+    "camas o sommiers",
+    "juguetes de madera",
+    "artesanías pequeñas",
+    "muebles de pino",
+    "muebles pintados de colores"
+  ],
+  "forbidden_keywords_note": "Estos elementos NO deben aparecer en imágenes generadas ni mencionarse en copy. Si el topic parece requerir algo así, redirigir a un producto del catálogo que cumpla función similar.",
+  "region": {
+    "country": "Argentina",
+    "main_area": "Córdoba capital y Gran Córdoba",
+    "known_projects_contexts": ["Mendiolaza", "Villa Allende", "La Calera", "La Granja", "Valle de Punilla"]
+  }
+}
