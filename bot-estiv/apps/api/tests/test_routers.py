@@ -131,14 +131,36 @@ async def test_decide_approval_not_found(client):
     assert r.status_code == 404
 
 
+def _make_approval_session(fake_approval, fake_post):
+    """Crea una AsyncSession mockeada que devuelve fake_approval o fake_post
+    según la tabla que el stmt consulte, sin depender del orden de las llamadas."""
+    session = AsyncMock()
+
+    def side_effect(stmt):
+        result = MagicMock()
+        try:
+            table_name = stmt.get_final_froms()[0].name
+        except (AttributeError, IndexError):
+            table_name = ""
+        if table_name == "approvals":
+            result.scalar_one_or_none.return_value = fake_approval
+            result.scalar_one.return_value = fake_approval
+        else:
+            result.scalar_one_or_none.return_value = fake_post
+            result.scalar_one.return_value = fake_post
+        return result
+
+    session.execute = AsyncMock(side_effect=side_effect)
+    session.commit = AsyncMock()
+    return session
+
+
 async def test_decide_approval_approve(app, client):
     from bot_estiv.db import get_session
 
     post_id = uuid.uuid4()
-    approval_id = uuid.uuid4()
-
     fake_approval = MagicMock(spec=Approval)
-    fake_approval.id = approval_id
+    fake_approval.id = uuid.uuid4()
     fake_approval.post_id = post_id
     fake_approval.status = "pending"
     fake_approval.requested_at = "2024-01-01T00:00:00"
@@ -148,24 +170,8 @@ async def test_decide_approval_approve(app, client):
     fake_post.id = post_id
     fake_post.status = PostStatus.PENDING_APPROVAL
 
-    call_count = 0
-
     async def override():
-        session = AsyncMock()
-
-        def side_effect(stmt):
-            nonlocal call_count
-            result = MagicMock()
-            if call_count == 0:
-                result.scalar_one_or_none.return_value = fake_approval
-            else:
-                result.scalar_one.return_value = fake_post
-            call_count += 1
-            return result
-
-        session.execute = AsyncMock(side_effect=side_effect)
-        session.commit = AsyncMock()
-        yield session
+        yield _make_approval_session(fake_approval, fake_post)
 
     app.dependency_overrides[get_session] = override
     r = await client.post(
@@ -191,24 +197,8 @@ async def test_decide_approval_reject(app, client):
     fake_post.id = post_id
     fake_post.status = PostStatus.PENDING_APPROVAL
 
-    call_count = 0
-
     async def override():
-        session = AsyncMock()
-
-        def side_effect(stmt):
-            nonlocal call_count
-            result = MagicMock()
-            if call_count == 0:
-                result.scalar_one_or_none.return_value = fake_approval
-            else:
-                result.scalar_one.return_value = fake_post
-            call_count += 1
-            return result
-
-        session.execute = AsyncMock(side_effect=side_effect)
-        session.commit = AsyncMock()
-        yield session
+        yield _make_approval_session(fake_approval, fake_post)
 
     app.dependency_overrides[get_session] = override
     r = await client.post(
@@ -235,24 +225,8 @@ async def test_decide_approval_edit(app, client):
     fake_post.id = post_id
     fake_post.status = PostStatus.PENDING_APPROVAL
 
-    call_count = 0
-
     async def override():
-        session = AsyncMock()
-
-        def side_effect(stmt):
-            nonlocal call_count
-            result = MagicMock()
-            if call_count == 0:
-                result.scalar_one_or_none.return_value = fake_approval
-            else:
-                result.scalar_one.return_value = fake_post
-            call_count += 1
-            return result
-
-        session.execute = AsyncMock(side_effect=side_effect)
-        session.commit = AsyncMock()
-        yield session
+        yield _make_approval_session(fake_approval, fake_post)
 
     app.dependency_overrides[get_session] = override
     r = await client.post(

@@ -85,7 +85,7 @@ def test_apply_action_create_requires_name():
         daily_budget_cents=200000,
         reason="sin nombre",
     )
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         apply_action(action)
 
 

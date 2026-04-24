@@ -240,6 +240,28 @@ async def test_node_approval_decision_post_not_found():
     assert "No encuentro el post" in result["reply_text"]
 
 
+def _make_graph_approval_session(fake_post, fake_approval):
+    """Crea una AsyncSession mockeada que devuelve fake_post o fake_approval
+    según la tabla que el stmt consulte, sin depender del orden de las llamadas."""
+    mock_session = AsyncMock()
+
+    def side_effect(stmt):
+        result = MagicMock()
+        try:
+            table_name = stmt.get_final_froms()[0].name
+        except (AttributeError, IndexError):
+            table_name = ""
+        if table_name == "approvals":
+            result.scalar_one_or_none.return_value = fake_approval
+        else:
+            result.scalar_one_or_none.return_value = fake_post
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=side_effect)
+    mock_session.commit = AsyncMock()
+    return mock_session
+
+
 async def test_node_approval_decision_approve():
     from bot_estiv.models import Post, Approval, PostStatus
 
@@ -249,22 +271,7 @@ async def test_node_approval_decision_approve():
     fake_approval = MagicMock(spec=Approval)
     fake_approval.status = "pending"
 
-    call_count = 0
-
-    mock_session = AsyncMock()
-
-    def side_effect(stmt):
-        nonlocal call_count
-        result = MagicMock()
-        if call_count == 0:
-            result.scalar_one_or_none.return_value = fake_post
-        else:
-            result.scalar_one_or_none.return_value = fake_approval
-        call_count += 1
-        return result
-
-    mock_session.execute = AsyncMock(side_effect=side_effect)
-    mock_session.commit = AsyncMock()
+    mock_session = _make_graph_approval_session(fake_post, fake_approval)
 
     mock_factory = MagicMock()
     mock_factory.__aenter__ = AsyncMock(return_value=mock_session)
