@@ -372,10 +372,10 @@ def load_template(name: str) -> TemplateSpec:
         except Exception as exc:
             logger.warning(
                 "template.load_failed",
-                extra={"name": name, "path": str(path), "err": str(exc)},
+                extra={"template_name": name, "path": str(path), "err": str(exc)},
             )
     if name not in _BUILTIN:
-        logger.warning("template.unknown", extra={"name": name})
+        logger.warning("template.unknown", extra={"template_name": name})
         return _BUILTIN["editorial_hero"]
     return _BUILTIN[name]
 
