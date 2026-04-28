@@ -51,7 +51,13 @@ async def _ensure_conversation(tenant_id, wa_id: str) -> Conversation:
         return convo
 
 
-async def _log_message(convo_id, role: str, content: str, agent: str | None = None) -> None:
+async def _log_message(
+    convo_id,
+    role: str,
+    content: str,
+    agent: str | None = None,
+    metadata: dict | None = None,
+) -> None:
     async with AsyncSessionLocal() as session:
         session.add(
             Message(
@@ -59,9 +65,24 @@ async def _log_message(convo_id, role: str, content: str, agent: str | None = No
                 role=role,
                 agent=agent,
                 content=content,
+                metadata_json=metadata,
             )
         )
         await session.commit()
+
+
+async def _twilio_message_seen(message_sid: str) -> bool:
+    if not message_sid:
+        return False
+    async with AsyncSessionLocal() as session:
+        row = (
+            await session.execute(
+                select(Message.id)
+                .where(Message.metadata_json["twilio_message_sid"].as_string() == message_sid)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return row is not None
 
 
 _PROJECT_TAG_RE = re.compile(r"#([a-z0-9][a-z0-9\-_]{1,63})", re.IGNORECASE)
@@ -183,6 +204,10 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
         },
     )
 
+    if await _twilio_message_seen(incoming.message_sid):
+        logger.info("whatsapp.duplicate_ignored", extra={"sid": incoming.message_sid})
+        return
+
     async with AsyncSessionLocal() as session:
         tenant = (
             await session.execute(select(Tenant).where(Tenant.slug == settings.tenant_id))
@@ -195,7 +220,15 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
         tenant_id = tenant.id
 
     convo = await _ensure_conversation(tenant_id, incoming.from_wa)
-    await _log_message(convo.id, "user", incoming.body or f"[{incoming.num_media} media]")
+    await _log_message(
+        convo.id,
+        "user",
+        incoming.body or f"[{incoming.num_media} media]",
+        metadata={
+            "twilio_message_sid": incoming.message_sid,
+            "twilio_num_media": incoming.num_media,
+        },
+    )
 
     # --- Si vinieron fotos: ingesta + confirmación, sin llamar al graph ---
     if incoming.num_media > 0:
