@@ -49,6 +49,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ${BOT_ESTIV_BRANDING_DIR:-/opt/bot-estiv/branding}:/branding:ro
+      - ../packages/brand:/app/packages/brand:ro
       - media_data:/media
     command: ["uvicorn", "bot_estiv.main:app", "--host", "0.0.0.0", "--port", "8000"]
     networks:
@@ -68,6 +69,7 @@ services:
         condition: service_healthy
     volumes:
       - ${BOT_ESTIV_BRANDING_DIR:-/opt/bot-estiv/branding}:/branding:ro
+      - ../packages/brand:/app/packages/brand:ro
       - media_data:/media
     command: ["arq", "bot_estiv.schedulers.worker.WorkerSettings"]
     networks:
