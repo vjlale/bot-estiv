@@ -118,10 +118,32 @@ async def _ingest_photos(incoming, project_tag: str | None) -> list[str]:
     return saved_urls
 
 
-async def _handle(form: dict, base_url: str, signature: str | None) -> None:
+def _signature_urls(request: Request) -> list[str]:
+    urls = [str(request.url)]
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if forwarded_proto and forwarded_host:
+        urls.append(f"{forwarded_proto}://{forwarded_host}{request.url.path}")
+
+    public_api = settings.next_public_api_base_url.rstrip("/")
+    if public_api:
+        urls.append(f"{public_api}{request.url.path}")
+
+    return list(dict.fromkeys(urls))
+
+
+async def _handle(form: dict, signature_urls: list[str], signature: str | None) -> None:
     if settings.app_env != "development":
-        if not signature or not whatsapp.validate_twilio_signature(base_url, form, signature):
-            logger.warning("twilio.signature_invalid", extra={"url": base_url})
+        valid_signature = bool(
+            signature
+            and any(
+                whatsapp.validate_twilio_signature(url, form, signature)
+                for url in signature_urls
+            )
+        )
+        if not valid_signature:
+            logger.warning("twilio.signature_invalid", extra={"urls": signature_urls})
             return
 
     incoming = whatsapp.parse_incoming(form)
@@ -201,10 +223,10 @@ async def twilio_webhook(
     x_twilio_signature: str | None = Header(default=None, alias="X-Twilio-Signature"),
 ):
     form = dict((await request.form()))
-    base_url = str(request.url)
+    signature_urls = _signature_urls(request)
 
     if not form.get("From"):
         raise HTTPException(status_code=400, detail="Mensaje inválido")
 
-    bg.add_task(_handle, form, base_url, x_twilio_signature)
+    bg.add_task(_handle, form, signature_urls, x_twilio_signature)
     return TWIML_OK

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -20,6 +20,10 @@ from ..models import AnalyticsSnapshot, Post, PostStatus, Tenant
 from ..tools import meta_graph, whatsapp
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.utcnow()
 
 
 async def _default_tenant_id() -> uuid.UUID:
@@ -52,7 +56,7 @@ async def weekly_plan_reminder(ctx) -> dict:
 
 async def pre_publish_reminder(ctx) -> dict:
     """Busca posts scheduled en las próximas 24h y manda recordatorio."""
-    now = datetime.now(timezone.utc)
+    now = _utcnow_naive()
     window_end = now + timedelta(hours=24)
     async with AsyncSessionLocal() as s:
         rows = (
@@ -77,7 +81,7 @@ async def pre_publish_reminder(ctx) -> dict:
 
 async def publish_scheduled(ctx) -> dict:
     """Publica posts cuya scheduled_for ya venció."""
-    now = datetime.now(timezone.utc)
+    now = _utcnow_naive()
     published = 0
     async with AsyncSessionLocal() as s:
         rows = (
@@ -122,7 +126,7 @@ async def _post_assets(session, post_id):
 
 
 async def refresh_analytics_snapshot(ctx) -> dict:
-    now = datetime.now(timezone.utc)
+    now = _utcnow_naive()
     try:
         data = await meta_graph.ig_insights()
     except Exception as exc:
