@@ -20,7 +20,7 @@ from ..db import AsyncSessionLocal
 from ..graph import run_graph
 from ..models import Conversation, Message, Tenant
 from ..routers.source_assets import create_source_asset
-from ..tools import storage, whatsapp
+from ..tools import photo_editor, storage, whatsapp
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -77,6 +77,23 @@ def _extract_project_tag(text: str) -> str | None:
     return m.group(1).lower()
 
 
+def _is_photo_edit_request(text: str) -> bool:
+    normalized = (text or "").lower()
+    triggers = (
+        "edit",
+        "editar",
+        "editala",
+        "editame",
+        "proces",
+        "lista para subir",
+        "dejala lista",
+        "post",
+        "publicar",
+        "mejor",
+    )
+    return any(trigger in normalized for trigger in triggers)
+
+
 async def _ingest_photos(incoming, project_tag: str | None) -> list[str]:
     """Descarga cada media, la sube a storage y crea SourceAssets.
     Devuelve la lista de URLs guardadas.
@@ -116,6 +133,16 @@ async def _ingest_photos(incoming, project_tag: str | None) -> list[str]:
         )
         saved_urls.append(url)
     return saved_urls
+
+
+async def _edit_first_photo(incoming) -> str | None:
+    if not incoming.media_urls:
+        return None
+
+    raw = await whatsapp.download_media(incoming.media_urls[0])
+    edited = photo_editor.process_photo(raw, fmt_key="ig_feed_portrait")
+    key = storage.new_key("edited/whatsapp", "png")
+    return storage.upload_bytes(edited, key, content_type="image/png")
 
 
 def _signature_urls(request: Request) -> list[str]:
@@ -174,6 +201,32 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
     if incoming.num_media > 0:
         project_tag = _extract_project_tag(incoming.body)
         saved = await _ingest_photos(incoming, project_tag)
+        if _is_photo_edit_request(incoming.body):
+            try:
+                edited_url = await _edit_first_photo(incoming)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("photo_edit.failed")
+                msg = f"Recibí la foto, pero falló la edición ({type(exc).__name__})."
+                whatsapp.send_text(incoming.from_wa, msg)
+                await _log_message(convo.id, "assistant", msg, agent="photo_editor")
+                return
+
+            if edited_url and edited_url.startswith("http"):
+                msg = (
+                    "Listo, te dejé la foto con look Gardens Wood en formato vertical "
+                    "para Instagram. Podés descargarla y subirla manualmente."
+                )
+                whatsapp.send_media(incoming.from_wa, msg, [edited_url])
+                await _log_message(convo.id, "assistant", f"{msg}\n{edited_url}", agent="photo_editor")
+            else:
+                msg = (
+                    "Procesé la foto, pero no tengo una URL pública para enviarla por WhatsApp. "
+                    "Revisala en el dashboard."
+                )
+                whatsapp.send_text(incoming.from_wa, msg)
+                await _log_message(convo.id, "assistant", msg, agent="photo_editor")
+            return
+
         if saved:
             tag_str = f"#{project_tag}" if project_tag else "(sin tag)"
             msg = (

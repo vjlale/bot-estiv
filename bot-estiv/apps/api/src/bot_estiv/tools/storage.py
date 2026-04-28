@@ -52,6 +52,9 @@ def upload_bytes(data: bytes, key: str, content_type: str | None = None) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     logger.info("storage.local_saved", extra={"path": str(target)})
+    public_base = settings.next_public_api_base_url.rstrip("/")
+    if base == LOCAL_MEDIA_DIR and public_base:
+        return f"{public_base}/media/{key}"
     return f"file://{target}"
 
 
