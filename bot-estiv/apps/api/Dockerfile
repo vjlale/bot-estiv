@@ -17,9 +17,9 @@ RUN pip install uv
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY src ./src
 RUN uv pip install --system -e .
 
-COPY src ./src
 COPY alembic.ini ./
 COPY migrations ./migrations
 
