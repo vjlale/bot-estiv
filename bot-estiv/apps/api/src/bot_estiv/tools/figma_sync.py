@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -39,9 +40,21 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
-_TEMPLATES_DIR = (
-    Path(__file__).resolve().parents[5] / "packages" / "brand" / "templates"
-)
+def _templates_dir() -> Path:
+    env_path = os.getenv("BRAND_TEMPLATES_DIR")
+    candidates = [Path(env_path)] if env_path else []
+    here = Path(__file__).resolve()
+    candidates.append(Path("/app/packages/brand/templates"))
+    candidates.extend(parent / "packages" / "brand" / "templates" for parent in here.parents)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0] if candidates else Path("packages/brand/templates")
+
+
+_TEMPLATES_DIR = _templates_dir()
 _FIGMA_API = "https://api.figma.com/v1"
 
 

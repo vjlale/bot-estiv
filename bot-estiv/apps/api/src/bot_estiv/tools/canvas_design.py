@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -23,11 +24,21 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
-# Ruta a packages/brand/fonts resuelta relativa a este archivo
-# canvas_design.py -> tools -> bot_estiv -> src -> api -> apps -> bot-estiv -> packages/brand/fonts
-_FONTS_DIR = (
-    Path(__file__).resolve().parents[5] / "packages" / "brand" / "fonts"
-)
+def _brand_dir(kind: str, env_name: str) -> Path:
+    env_path = os.getenv(env_name)
+    candidates = [Path(env_path)] if env_path else []
+    here = Path(__file__).resolve()
+    candidates.append(Path("/app/packages/brand") / kind)
+    candidates.extend(parent / "packages" / "brand" / kind for parent in here.parents)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0] if candidates else Path("packages") / "brand" / kind
+
+
+_FONTS_DIR = _brand_dir("fonts", "BRAND_FONTS_DIR")
 
 
 def _load_logo() -> Image.Image | None:
