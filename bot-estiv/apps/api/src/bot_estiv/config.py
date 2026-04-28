@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     app_name: str = "bot-estiv"
     log_level: str = "INFO"
     tenant_id: str = "gardens-wood"
+    bot_estiv_dashboard_domain: str = ""
+    bot_estiv_api_domain: str = ""
+    next_public_api_base_url: str = "http://localhost:8000"
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/bot_estiv"

@@ -16,6 +16,7 @@ from .routers import (
     campaigns,
     inbox,
     posts,
+    settings as settings_router,
     source_assets,
     webhook,
 )
@@ -49,6 +50,7 @@ app.include_router(calendar.router)
 app.include_router(assets.router)
 app.include_router(source_assets.router)
 app.include_router(inbox.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/health")

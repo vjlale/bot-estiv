@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: bot_estiv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-bot_estiv}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bot_estiv}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bot_estiv_internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: bot_estiv_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - bot_estiv_internal
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: bot_estiv_api
+    restart: unless-stopped
+    env_file: ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${BOT_ESTIV_BRANDING_DIR:-/opt/bot-estiv/branding}:/branding:ro
+      - media_data:/media
+    command: ["uvicorn", "bot_estiv.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - bot_estiv_internal
+
+  worker:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: bot_estiv_worker
+    restart: unless-stopped
+    env_file: ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ${BOT_ESTIV_BRANDING_DIR:-/opt/bot-estiv/branding}:/branding:ro
+      - media_data:/media
+    command: ["arq", "bot_estiv.schedulers.worker.WorkerSettings"]
+    networks:
+      - bot_estiv_internal
+
+  dashboard:
+    build:
+      context: ../apps/dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+    container_name: bot_estiv_dashboard
+    restart: unless-stopped
+    env_file: ../.env
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - bot_estiv_internal
+
+volumes:
+  pg_data:
+    name: bot_estiv_pg_data
+  redis_data:
+    name: bot_estiv_redis_data
+  media_data:
+    name: bot_estiv_media_data
+
+networks:
+  bot_estiv_internal:
+    name: bot_estiv_internal
