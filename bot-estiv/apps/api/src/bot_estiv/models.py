@@ -37,6 +37,10 @@ class PostFormat(str, enum.Enum):
     VIDEO_STORY = "video_story"
 
 
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    return [item.value for item in enum_cls]
+
+
 class Tenant(Base):
     __tablename__ = "tenants"
 
@@ -85,9 +89,13 @@ class Post(Base):
     title: Mapped[str] = mapped_column(String(256))
     caption: Mapped[str] = mapped_column(Text)
     hashtags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    format: Mapped[PostFormat] = mapped_column(Enum(PostFormat))
+    format: Mapped[PostFormat] = mapped_column(
+        Enum(PostFormat, name="postformat", values_callable=_enum_values)
+    )
     status: Mapped[PostStatus] = mapped_column(
-        Enum(PostStatus), default=PostStatus.DRAFT, index=True
+        Enum(PostStatus, name="poststatus", values_callable=_enum_values),
+        default=PostStatus.DRAFT,
+        index=True,
     )
     pillar: Mapped[str | None] = mapped_column(String(32), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
