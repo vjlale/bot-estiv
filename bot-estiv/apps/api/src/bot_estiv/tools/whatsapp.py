@@ -117,6 +117,7 @@ async def download_media(url: str) -> bytes:
     """Descarga media de Twilio (requiere basic auth con SID + token)."""
     async with httpx.AsyncClient(
         auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+        follow_redirects=True,
         timeout=30.0,
     ) as client:
         resp = await client.get(url)
