@@ -71,14 +71,14 @@ async def _log_message(
         await session.commit()
 
 
-async def _twilio_message_seen(message_sid: str) -> bool:
+async def _twilio_message_completed(message_sid: str) -> bool:
     if not message_sid:
         return False
     async with AsyncSessionLocal() as session:
         row = (
             await session.execute(
                 select(Message.id)
-                .where(Message.metadata_json["twilio_message_sid"].as_string() == message_sid)
+                .where(Message.metadata_json["processed_twilio_message_sid"].as_string() == message_sid)
                 .limit(1)
             )
         ).scalar_one_or_none()
@@ -204,7 +204,7 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
         },
     )
 
-    if await _twilio_message_seen(incoming.message_sid):
+    if await _twilio_message_completed(incoming.message_sid):
         logger.info("whatsapp.duplicate_ignored", extra={"sid": incoming.message_sid})
         return
 
@@ -241,7 +241,13 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
                 logger.exception("photo_edit.failed")
                 msg = f"Recibí la foto, pero falló la edición ({type(exc).__name__})."
                 whatsapp.send_text(incoming.from_wa, msg)
-                await _log_message(convo.id, "assistant", msg, agent="photo_editor")
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
                 return
 
             if edited_url and edited_url.startswith("http"):
@@ -250,14 +256,26 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
                     "para Instagram. Podés descargarla y subirla manualmente."
                 )
                 whatsapp.send_media(incoming.from_wa, msg, [edited_url])
-                await _log_message(convo.id, "assistant", f"{msg}\n{edited_url}", agent="photo_editor")
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    f"{msg}\n{edited_url}",
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
             else:
                 msg = (
                     "Procesé la foto, pero no tengo una URL pública para enviarla por WhatsApp. "
                     "Revisala en el dashboard."
                 )
                 whatsapp.send_text(incoming.from_wa, msg)
-                await _log_message(convo.id, "assistant", msg, agent="photo_editor")
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
             return
 
         if saved:
@@ -278,7 +296,13 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
                 )
             try:
                 whatsapp.send_text(incoming.from_wa, msg)
-                await _log_message(convo.id, "assistant", msg, agent="photo_ingester")
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_ingester",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("whatsapp.reply_failed", exc_info=exc)
             return
@@ -292,12 +316,25 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
             incoming.from_wa,
             f"Uy, se me cruzaron los cables. Probá de nuevo. ({type(exc).__name__})",
         )
+        await _log_message(
+            convo.id,
+            "assistant",
+            f"Uy, se me cruzaron los cables. Probá de nuevo. ({type(exc).__name__})",
+            agent="director",
+            metadata={"processed_twilio_message_sid": incoming.message_sid},
+        )
         return
 
     reply = result.get("reply_text", "Listo.")
-    await _log_message(convo.id, "assistant", reply, agent="director")
     try:
         whatsapp.send_text(incoming.from_wa, reply)
+        await _log_message(
+            convo.id,
+            "assistant",
+            reply,
+            agent="director",
+            metadata={"processed_twilio_message_sid": incoming.message_sid},
+        )
     except Exception as exc:
         logger.warning("whatsapp.reply_failed", exc_info=exc)
 
