@@ -306,7 +306,7 @@ def _builtin_spec_card() -> TemplateSpec:
                 bbox=(60, img_h + 285, W - 60, H - 120),
                 font_kind="body_medium",
                 font_size_px=22,
-                color="#4E5A66",
+                color=PALETTE.gris_suave,
                 align="left",
                 max_lines=5,
                 line_spacing=1.45,
@@ -359,7 +359,7 @@ def _builtin_quote_card() -> TemplateSpec:
             "subtitle": Slot(
                 bbox=(90, int(H * 0.68), W - 90, int(H * 0.80)),
                 font_kind="body_medium",
-                font_size_px=40,
+                font_size_px=48,
                 color=PALETTE.naranja_fuego,
                 align="center",
                 max_lines=2,
@@ -369,7 +369,7 @@ def _builtin_quote_card() -> TemplateSpec:
                 bbox=(90, int(H * 0.82), W - 90, int(H * 0.87)),
                 font_kind="body_semibold",
                 font_size_px=22,
-                color=PALETTE.verde_eucalipto,
+                color=PALETTE.naranja_fuego,
                 align="center",
                 uppercase=True,
                 tracking_em=0.30,
@@ -440,7 +440,7 @@ def _builtin_before_after() -> TemplateSpec:
                 bbox=(60, img_h + 278, W - 60, H - 120),
                 font_kind="body_medium",
                 font_size_px=22,
-                color="#4E5A66",
+                color=PALETTE.gris_suave,
                 align="left",
                 max_lines=4,
                 line_spacing=1.45,
@@ -801,13 +801,10 @@ def render(
         img_val = values.get(slot_key)
         if img_val is not None and slot_key in spec.slots:
             if isinstance(img_val, bytes):
-                img = Image.open(io.BytesIO(img_val))
+                with Image.open(io.BytesIO(img_val)) as img:
+                    _draw_image_slot(base, spec.slots[slot_key], img)
             elif isinstance(img_val, Image.Image):
-                img = img_val
-            else:
-                img = None
-            if img is not None:
-                _draw_image_slot(base, spec.slots[slot_key], img)
+                _draw_image_slot(base, spec.slots[slot_key], img_val)
 
     # 2) decoraciones
     for deco in spec.decorations:
