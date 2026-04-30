@@ -21,13 +21,15 @@ from ..schemas import DesignBrief, SlideBrief
 from ..tools import canvas_design, image_gen, photo_editor, storage, template_renderer
 
 
-# Mapa de rol narrativo → plantilla por defecto para carruseles
+# Mapa de rol narrativo → plantilla por defecto para carruseles (posición 1-based).
+# Para quote_card y before_after asignar via SlideBrief.template explícitamente.
+# Ver skills/graphic-designer/SKILL.md para la guía completa de selección.
 _ROLE_TEMPLATE_BY_INDEX = {
     1: "cover_hero",      # apertura impactante
-    2: "minimal_stamp",   # detalle de artesanía
-    3: "editorial_hero",  # lifestyle con copy
-    4: "split_60_40",     # cierre con CTA
-    5: "spec_card",       # datos técnicos
+    2: "minimal_stamp",   # detalle de artesanía / respiro visual
+    3: "editorial_hero",  # lifestyle con copy narrativo
+    4: "split_60_40",     # información / proceso / dato técnico
+    5: "spec_card",       # ficha técnica o cierre con datos
 }
 
 logger = logging.getLogger(__name__)

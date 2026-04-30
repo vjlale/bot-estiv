@@ -339,12 +339,149 @@ def _builtin_spec_card() -> TemplateSpec:
     )
 
 
+def _builtin_quote_card() -> TemplateSpec:
+    """Tarjeta tipográfica para testimonios y frases de impacto (sin foto)."""
+    W, H = 1080, 1350
+    return TemplateSpec(
+        name="quote_card",
+        size=(W, H),
+        slots={
+            # no hay slot:image — fondo es el rect carbon
+            "title": Slot(
+                bbox=(90, int(H * 0.26), W - 90, int(H * 0.66)),
+                font_kind="heading_bold",
+                font_size_px=76,
+                color=PALETTE.blanco_hueso,
+                align="center",
+                max_lines=4,
+                line_spacing=1.18,
+            ),
+            "subtitle": Slot(
+                bbox=(90, int(H * 0.68), W - 90, int(H * 0.80)),
+                font_kind="body_medium",
+                font_size_px=40,
+                color=PALETTE.naranja_fuego,
+                align="center",
+                max_lines=2,
+                line_spacing=1.25,
+            ),
+            "pillar_tag": Slot(
+                bbox=(90, int(H * 0.82), W - 90, int(H * 0.87)),
+                font_kind="body_semibold",
+                font_size_px=22,
+                color=PALETTE.verde_eucalipto,
+                align="center",
+                uppercase=True,
+                tracking_em=0.30,
+                max_lines=1,
+            ),
+            # logo centrado en la parte inferior
+            "logo": Slot(bbox=(W // 2 - 110, H - 120, W // 2 + 110, H - 60)),
+        },
+        decorations=[
+            # fondo carbon completo
+            Decoration(
+                type="rect",
+                bbox=(0, 0, W, H),
+                fill=PALETTE.gris_carbon,
+                opacity=1.0,
+            ),
+            # hairline superior
+            Decoration(
+                type="hairline",
+                bbox=(90, int(H * 0.18), W - 90, int(H * 0.18) + 2),
+                fill=PALETTE.naranja_fuego,
+                opacity=0.7,
+                weight=2,
+            ),
+            # hairline inferior
+            Decoration(
+                type="hairline",
+                bbox=(90, int(H * 0.89), W - 90, int(H * 0.89) + 2),
+                fill=PALETTE.naranja_fuego,
+                opacity=0.7,
+                weight=2,
+            ),
+        ],
+    )
+
+
+def _builtin_before_after() -> TemplateSpec:
+    """Dos fotos lado a lado (antes/después) con leyenda inferior."""
+    W, H = 1080, 1350
+    split_x = W // 2
+    img_h = int(H * 0.68)
+    gap = 8  # px de separación entre las dos fotos
+    return TemplateSpec(
+        name="before_after",
+        size=(W, H),
+        slots={
+            "image": Slot(bbox=(0, 0, split_x - gap // 2, img_h), fit="cover"),
+            "image_b": Slot(bbox=(split_x + gap // 2, 0, W, img_h), fit="cover"),
+            "pillar_tag": Slot(
+                bbox=(60, img_h + 40, W - 60, img_h + 75),
+                font_kind="body_semibold",
+                font_size_px=20,
+                color=PALETTE.naranja_fuego,
+                uppercase=True,
+                tracking_em=0.28,
+                max_lines=1,
+            ),
+            "title": Slot(
+                bbox=(60, img_h + 100, W - 60, img_h + 260),
+                font_kind="heading_bold",
+                font_size_px=56,
+                color=PALETTE.gris_carbon,
+                align="left",
+                max_lines=2,
+                line_spacing=1.08,
+            ),
+            "subtitle": Slot(
+                bbox=(60, img_h + 278, W - 60, H - 120),
+                font_kind="body_medium",
+                font_size_px=22,
+                color="#4E5A66",
+                align="left",
+                max_lines=4,
+                line_spacing=1.45,
+            ),
+            "logo": Slot(bbox=(W - 180, H - 110, W - 60, H - 60)),
+        },
+        decorations=[
+            # panel inferior blanco hueso
+            Decoration(
+                type="rect",
+                bbox=(0, img_h, W, H),
+                fill=PALETTE.blanco_hueso,
+                opacity=1.0,
+            ),
+            # franja blanca de separación entre fotos
+            Decoration(
+                type="rect",
+                bbox=(split_x - gap // 2, 0, split_x + gap // 2, img_h),
+                fill=PALETTE.blanco_hueso,
+                opacity=1.0,
+            ),
+            # hairline naranja sobre el pillar tag
+            Decoration(
+                type="hairline",
+                bbox=(60, img_h + 18, 140, img_h + 20),
+                fill=PALETTE.naranja_fuego,
+                opacity=1.0,
+                weight=2,
+            ),
+        ],
+    )
+
+
 _BUILTIN: dict[str, TemplateSpec] = {
     "editorial_hero": _builtin_editorial_hero(),
     "minimal_stamp": _builtin_minimal_stamp(),
     "cover_hero": _builtin_cover_hero(),
     "split_60_40": _builtin_split_60_40(),
     "spec_card": _builtin_spec_card(),
+    "quote_card": _builtin_quote_card(),
+    "before_after": _builtin_before_after(),
 }
 
 
@@ -659,17 +796,18 @@ def render(
 
     base = Image.new("RGBA", (W, H), "#000000FF")
 
-    # 1) imagen de fondo
-    img_val = values.get("image")
-    if img_val is not None and "image" in spec.slots:
-        if isinstance(img_val, bytes):
-            img = Image.open(io.BytesIO(img_val))
-        elif isinstance(img_val, Image.Image):
-            img = img_val
-        else:
-            img = None
-        if img is not None:
-            _draw_image_slot(base, spec.slots["image"], img)
+    # 1) imagen(es) de fondo
+    for slot_key in ("image", "image_b"):
+        img_val = values.get(slot_key)
+        if img_val is not None and slot_key in spec.slots:
+            if isinstance(img_val, bytes):
+                img = Image.open(io.BytesIO(img_val))
+            elif isinstance(img_val, Image.Image):
+                img = img_val
+            else:
+                img = None
+            if img is not None:
+                _draw_image_slot(base, spec.slots[slot_key], img)
 
     # 2) decoraciones
     for deco in spec.decorations:

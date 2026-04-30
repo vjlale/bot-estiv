@@ -132,3 +132,39 @@ Toda plantilla nueva debe pasar `brand_guardian.validate_rendered_template`:
 - Paleta dominante cercana a la marca
 
 Si el Guardian warneaba algo, ajustar la plantilla antes de usarla en producción.
+
+---
+
+## ¿Qué template elegir?
+
+Para decisiones de diseño (qué template usar según contenido, pilar o posición en
+el carrusel) ver **`skills/graphic-designer/SKILL.md`** que contiene la matriz
+completa de selección, reglas de color, tipografía y coherencia de carruseles.
+
+Resumen rápido de los 7 templates disponibles:
+
+| Template | Cuándo usarlo |
+|---|---|
+| `cover_hero` | Slide 1 de carrusel · post de proyecto nuevo · máximo impacto |
+| `minimal_stamp` | Detalle de material · foto que habla sola · respiro visual |
+| `editorial_hero` | Lifestyle con copy · slide narrativo con subtítulo |
+| `split_60_40` | Proceso · dato técnico · CTA con copy largo |
+| `spec_card` | Ficha de producto · especificaciones · cierre con datos |
+| `quote_card` | Testimonio de cliente · frase de impacto (sin foto) |
+| `before_after` | Transformación antes/después (requiere `image` + `image_b`) |
+
+### Mapeo en `_ROLE_TEMPLATE_BY_INDEX`
+
+```python
+_ROLE_TEMPLATE_BY_INDEX = {
+    1: "cover_hero",      # apertura impactante
+    2: "minimal_stamp",   # detalle de artesanía
+    3: "editorial_hero",  # lifestyle con copy
+    4: "split_60_40",     # información / proceso
+    5: "spec_card",       # datos técnicos o cierre
+    # quote_card y before_after se asignan explícitamente via slide.template
+}
+```
+
+Para que un slide puntual use `quote_card` o `before_after`, asignarlo en el
+`SlideBrief.template` antes de llamar a `generate_post_from_photos()`.
