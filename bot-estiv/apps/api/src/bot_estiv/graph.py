@@ -60,7 +60,8 @@ logger = logging.getLogger(__name__)
 
 class State(TypedDict, total=False):
     messages: Annotated[list, add_messages]
-    user_wa_id: str
+    user_wa_id: str      # identificador único: "whatsapp:+54..." o "tg:12345678"
+    channel: str         # "whatsapp" | "telegram"
     user_text: str
     routing: dict[str, Any]
     draft_copy: dict[str, Any]
@@ -196,24 +197,35 @@ async def node_save_post(state: State) -> State:
 
 
 async def node_approval(state: State) -> State:
+    from .tools import telegram as tg_tool
+
     urls = state["preview_urls"]
     copy = state["draft_copy"]
     caption = (
         f"{copy['title']}\n\n{copy['caption']}\n\n"
         + " ".join(copy.get("hashtags") or [])
     )
-    to_wa = state["user_wa_id"]
+    user_id = state["user_wa_id"]
     post_id = state["post_id"]
-    try:
-        whatsapp.send_approval_request(to_wa, urls, caption, post_id)
-    except Exception as exc:
-        logger.warning("whatsapp.send_failed", exc_info=exc)
+    channel = state.get("channel", "whatsapp")
+
+    if channel == "telegram":
+        chat_id = int(user_id.removeprefix("tg:"))
+        try:
+            await tg_tool.send_approval_request(chat_id, urls, caption, post_id)
+        except Exception as exc:
+            logger.warning("telegram.approval_send_failed", exc_info=exc)
+    else:
+        try:
+            whatsapp.send_approval_request(user_id, urls, caption, post_id)
+        except Exception as exc:
+            logger.warning("whatsapp.send_failed", exc_info=exc)
 
     async with AsyncSessionLocal() as session:
         session.add(
             Approval(
                 post_id=uuid.UUID(post_id),
-                requested_to_wa_id=to_wa,
+                requested_to_wa_id=user_id,
                 status="pending",
             )
         )
@@ -394,6 +406,15 @@ def build_graph():
 GRAPH = build_graph()
 
 
-async def run_graph(user_text: str, user_wa_id: str) -> State:
-    state: State = {"user_text": user_text, "user_wa_id": user_wa_id, "messages": []}
+async def run_graph(
+    user_text: str,
+    user_wa_id: str,
+    channel: str = "whatsapp",
+) -> State:
+    state: State = {
+        "user_text": user_text,
+        "user_wa_id": user_wa_id,
+        "channel": channel,
+        "messages": [],
+    }
     return await GRAPH.ainvoke(state)

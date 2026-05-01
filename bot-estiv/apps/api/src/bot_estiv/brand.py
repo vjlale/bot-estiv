@@ -21,6 +21,8 @@ class BrandPalette:
     # Acentos
     verde_eucalipto: str = "#5F8575"
     naranja_fuego: str = "#E59500"
+    # Derivados de uso frecuente en overlays
+    gris_suave: str = "#4E5A66"  # carbon claro para subtítulos sobre fondo blanco
 
     def all(self) -> list[str]:
         return [

@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     figma_access_token: str = ""
     figma_templates_file_key: str = ""
 
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_webhook_url: str = ""  # ej: https://api.tudominio.com (sin /webhook/telegram)
+
     # Monitoring
     sentry_dsn: str = ""
 
