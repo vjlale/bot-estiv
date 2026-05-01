@@ -6,6 +6,7 @@ import logging
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .routers import (
@@ -16,6 +17,7 @@ from .routers import (
     campaigns,
     inbox,
     posts,
+    settings as settings_router,
     source_assets,
     webhook,
 )
@@ -49,6 +51,8 @@ app.include_router(calendar.router)
 app.include_router(assets.router)
 app.include_router(source_assets.router)
 app.include_router(inbox.router)
+app.include_router(settings_router.router)
+app.mount("/media", StaticFiles(directory="/media"), name="media")
 
 
 @app.get("/health")

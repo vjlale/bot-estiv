@@ -30,6 +30,18 @@ export type Post = {
   created_at: string;
 };
 
+export type DeploymentSettings = {
+  environment: string;
+  tenant_id: string;
+  dashboard_domain: string;
+  api_domain: string;
+  api_base_url: string;
+  twilio_webhook_url: string;
+  brand_logo_path: string;
+  brand_manual_path: string;
+  checks: Record<string, boolean>;
+};
+
 export const api = {
   listPosts: (status?: string) =>
     http<Post[]>(`/posts${status ? `?status=${status}` : ""}`),
@@ -54,6 +66,7 @@ export const api = {
     }),
   listAssets: (kind?: string) =>
     http<any[]>(`/assets${kind ? `?kind=${kind}` : ""}`),
+  deploymentSettings: () => http<DeploymentSettings>(`/settings/deployment`),
   listConversations: () => http<any[]>(`/inbox/conversations`),
   listMessages: (convId: string) => http<any[]>(`/inbox/conversations/${convId}/messages`),
   // ===== Fotos reales (biblioteca de obras) =====

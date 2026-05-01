@@ -20,7 +20,7 @@ from ..db import AsyncSessionLocal
 from ..graph import run_graph
 from ..models import Conversation, Message, Tenant
 from ..routers.source_assets import create_source_asset
-from ..tools import storage, telegram, whatsapp
+from ..tools import photo_editor, storage, telegram, whatsapp
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -54,7 +54,13 @@ async def _ensure_conversation(
         return convo
 
 
-async def _log_message(convo_id, role: str, content: str, agent: str | None = None) -> None:
+async def _log_message(
+    convo_id,
+    role: str,
+    content: str,
+    agent: str | None = None,
+    metadata: dict | None = None,
+) -> None:
     async with AsyncSessionLocal() as session:
         session.add(
             Message(
@@ -62,9 +68,24 @@ async def _log_message(convo_id, role: str, content: str, agent: str | None = No
                 role=role,
                 agent=agent,
                 content=content,
+                metadata_json=metadata,
             )
         )
         await session.commit()
+
+
+async def _twilio_message_completed(message_sid: str) -> bool:
+    if not message_sid:
+        return False
+    async with AsyncSessionLocal() as session:
+        row = (
+            await session.execute(
+                select(Message.id)
+                .where(Message.metadata_json["processed_twilio_message_sid"].as_string() == message_sid)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return row is not None
 
 
 _PROJECT_TAG_RE = re.compile(r"#([a-z0-9][a-z0-9\-_]{1,63})", re.IGNORECASE)
@@ -78,6 +99,23 @@ def _extract_project_tag(text: str) -> str | None:
     if not m:
         return None
     return m.group(1).lower()
+
+
+def _is_photo_edit_request(text: str) -> bool:
+    normalized = (text or "").lower()
+    triggers = (
+        "edit",
+        "editar",
+        "editala",
+        "editame",
+        "proces",
+        "lista para subir",
+        "dejala lista",
+        "post",
+        "publicar",
+        "mejor",
+    )
+    return any(trigger in normalized for trigger in triggers)
 
 
 async def _ingest_photos(incoming, project_tag: str | None) -> list[str]:
@@ -121,10 +159,42 @@ async def _ingest_photos(incoming, project_tag: str | None) -> list[str]:
     return saved_urls
 
 
-async def _handle(form: dict, base_url: str, signature: str | None) -> None:
+async def _edit_first_photo(incoming) -> str | None:
+    if not incoming.media_urls:
+        return None
+
+    raw = await whatsapp.download_media(incoming.media_urls[0])
+    edited = photo_editor.process_photo(raw, fmt_key="ig_feed_portrait")
+    key = storage.new_key("edited/whatsapp", "png")
+    return storage.upload_bytes(edited, key, content_type="image/png")
+
+
+def _signature_urls(request: Request) -> list[str]:
+    urls = [str(request.url)]
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if forwarded_proto and forwarded_host:
+        urls.append(f"{forwarded_proto}://{forwarded_host}{request.url.path}")
+
+    public_api = settings.next_public_api_base_url.rstrip("/")
+    if public_api:
+        urls.append(f"{public_api}{request.url.path}")
+
+    return list(dict.fromkeys(urls))
+
+
+async def _handle(form: dict, signature_urls: list[str], signature: str | None) -> None:
     if settings.app_env != "development":
-        if not signature or not whatsapp.validate_twilio_signature(base_url, form, signature):
-            logger.warning("twilio.signature_invalid", extra={"url": base_url})
+        valid_signature = bool(
+            signature
+            and any(
+                whatsapp.validate_twilio_signature(url, form, signature)
+                for url in signature_urls
+            )
+        )
+        if not valid_signature:
+            logger.warning("twilio.signature_invalid", extra={"urls": signature_urls})
             return
 
     incoming = whatsapp.parse_incoming(form)
@@ -136,6 +206,10 @@ async def _handle(form: dict, base_url: str, signature: str | None) -> None:
             "num_media": incoming.num_media,
         },
     )
+
+    if await _twilio_message_completed(incoming.message_sid):
+        logger.info("whatsapp.duplicate_ignored", extra={"sid": incoming.message_sid})
+        return
 
     async with AsyncSessionLocal() as session:
         tenant = (
@@ -149,12 +223,64 @@ async def _handle(form: dict, base_url: str, signature: str | None) -> None:
         tenant_id = tenant.id
 
     convo = await _ensure_conversation(tenant_id, incoming.from_wa, channel="whatsapp")
-    await _log_message(convo.id, "user", incoming.body or f"[{incoming.num_media} media]")
+    await _log_message(
+        convo.id,
+        "user",
+        incoming.body or f"[{incoming.num_media} media]",
+        metadata={
+            "twilio_message_sid": incoming.message_sid,
+            "twilio_num_media": incoming.num_media,
+        },
+    )
 
     # --- Si vinieron fotos: ingesta + confirmación, sin llamar al graph ---
     if incoming.num_media > 0:
         project_tag = _extract_project_tag(incoming.body)
         saved = await _ingest_photos(incoming, project_tag)
+        if _is_photo_edit_request(incoming.body):
+            try:
+                edited_url = await _edit_first_photo(incoming)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("photo_edit.failed")
+                msg = f"Recibí la foto, pero falló la edición ({type(exc).__name__})."
+                whatsapp.send_text(incoming.from_wa, msg)
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
+                return
+
+            if edited_url and edited_url.startswith("http"):
+                msg = (
+                    "Listo, te dejé la foto con look Gardens Wood en formato vertical "
+                    "para Instagram. Podés descargarla y subirla manualmente."
+                )
+                whatsapp.send_media(incoming.from_wa, msg, [edited_url])
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    f"{msg}\n{edited_url}",
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
+            else:
+                msg = (
+                    "Procesé la foto, pero no tengo una URL pública para enviarla por WhatsApp. "
+                    "Revisala en el dashboard."
+                )
+                whatsapp.send_text(incoming.from_wa, msg)
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
+            return
+
         if saved:
             tag_str = f"#{project_tag}" if project_tag else "(sin tag)"
             msg = (
@@ -173,7 +299,13 @@ async def _handle(form: dict, base_url: str, signature: str | None) -> None:
                 )
             try:
                 whatsapp.send_text(incoming.from_wa, msg)
-                await _log_message(convo.id, "assistant", msg, agent="photo_ingester")
+                await _log_message(
+                    convo.id,
+                    "assistant",
+                    msg,
+                    agent="photo_ingester",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("whatsapp.reply_failed", exc_info=exc)
             return
@@ -187,12 +319,25 @@ async def _handle(form: dict, base_url: str, signature: str | None) -> None:
             incoming.from_wa,
             f"Uy, se me cruzaron los cables. Probá de nuevo. ({type(exc).__name__})",
         )
+        await _log_message(
+            convo.id,
+            "assistant",
+            f"Uy, se me cruzaron los cables. Probá de nuevo. ({type(exc).__name__})",
+            agent="director",
+            metadata={"processed_twilio_message_sid": incoming.message_sid},
+        )
         return
 
     reply = result.get("reply_text", "Listo.")
-    await _log_message(convo.id, "assistant", reply, agent="director")
     try:
         whatsapp.send_text(incoming.from_wa, reply)
+        await _log_message(
+            convo.id,
+            "assistant",
+            reply,
+            agent="director",
+            metadata={"processed_twilio_message_sid": incoming.message_sid},
+        )
     except Exception as exc:
         logger.warning("whatsapp.reply_failed", exc_info=exc)
 
@@ -204,12 +349,12 @@ async def twilio_webhook(
     x_twilio_signature: str | None = Header(default=None, alias="X-Twilio-Signature"),
 ):
     form = dict((await request.form()))
-    base_url = str(request.url)
+    signature_urls = _signature_urls(request)
 
     if not form.get("From"):
         raise HTTPException(status_code=400, detail="Mensaje inválido")
 
-    bg.add_task(_handle, form, base_url, x_twilio_signature)
+    bg.add_task(_handle, form, signature_urls, x_twilio_signature)
     return TWIML_OK
 
 

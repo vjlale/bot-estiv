@@ -7,6 +7,7 @@ identidad oficial.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -121,9 +122,22 @@ HASHTAGS = BrandHashtags()
 
 # ==========  Catálogo de productos (fuente de verdad externa) ==========
 
-_CATALOG_PATH = (
-    Path(__file__).resolve().parents[4] / "packages" / "brand" / "catalog.json"
-)
+
+def _catalog_path() -> Path:
+    env_path = os.getenv("BRAND_CATALOG_PATH")
+    candidates = [Path(env_path)] if env_path else []
+    here = Path(__file__).resolve()
+    candidates.append(Path("/app/packages/brand/catalog.json"))
+    candidates.extend(parent / "packages" / "brand" / "catalog.json" for parent in here.parents)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0] if candidates else Path("packages/brand/catalog.json")
+
+
+_CATALOG_PATH = _catalog_path()
 
 
 @dataclass(frozen=True)
