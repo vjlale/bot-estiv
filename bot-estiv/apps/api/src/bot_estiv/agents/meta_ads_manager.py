@@ -74,23 +74,27 @@ async def plan_changes(user_instruction: str) -> AdsPlan:
 def apply_action(action: AdsAction) -> dict[str, Any]:
     """Ejecuta una acción aprobada. Debe invocarse DESPUÉS de confirmación humana."""
     if action.kind == "create":
-        assert action.name and action.objective and action.daily_budget_cents
+        if not (action.name and action.objective and action.daily_budget_cents):
+            raise ValueError("create requiere name, objective y daily_budget_cents")
         cid = meta_ads.create_campaign(
             action.name,
             objective=action.objective,
             daily_budget_cents=action.daily_budget_cents,
         )
         return {"campaign_id": cid, "status": "paused"}
-    assert action.campaign_id
+    if not action.campaign_id:
+        raise ValueError(f"La acción '{action.kind}' requiere campaign_id")
     if action.kind == "pause":
         meta_ads.pause_campaign(action.campaign_id)
     elif action.kind == "activate":
         meta_ads.activate_campaign(action.campaign_id)
     elif action.kind == "update_budget":
-        assert action.daily_budget_cents
+        if not action.daily_budget_cents:
+            raise ValueError("update_budget requiere daily_budget_cents")
         meta_ads.update_daily_budget(action.campaign_id, action.daily_budget_cents)
     elif action.kind == "duplicate":
-        assert action.name
+        if not action.name:
+            raise ValueError("duplicate requiere name")
         new_id = meta_ads.duplicate_campaign(action.campaign_id, action.name)
         return {"campaign_id": new_id}
     return {"campaign_id": action.campaign_id, "ok": True}
