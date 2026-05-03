@@ -65,6 +65,46 @@ def build_visual_prompt(topic: str, slide: SlideBrief | None = None) -> str:
     return " ".join(parts)
 
 
+def build_clean_infographic_prompt(topic: str, template_name: str) -> str:
+    """Prompt especializado para bases de infografías: producto aislado, SIN texto,
+    sin dimensiones ni labels dibujadas, con mucho negative space para que Pillow
+    compoga encima los callouts, dimension lines, badges y textos reales.
+
+    `template_name` ajusta hints de composición según la plantilla destino
+    (infographic_dimensions vs numbered_steps).
+    """
+    layout_hint = (
+        "Product centered horizontally, photographed from a slight 3/4 perspective "
+        "on a seamless bone-white background, studio editorial lighting. "
+        "Keep 40% negative space above and to the right and bottom of the product."
+        if template_name == "infographic_dimensions"
+        else (
+            "Product or scene centered vertically in the frame, isolated on a "
+            "light neutral background. Keep a wide margin of 30% on both left and "
+            "right sides so numbered callouts and description panels can be placed "
+            "outside the product zone without overlapping."
+        )
+    )
+    return (
+        f"Editorial product photograph for a technical infographic about: {topic}.\n\n"
+        f"{layout_hint}\n\n"
+        "STYLE: Premium outdoor design magazine aesthetic. Quebracho wood visible. "
+        "Warm golden-hour ambient but clean shadows, high dynamic range, sharp "
+        "details on wood grain and joinery. Eucalyptus green and orange accents "
+        "only if naturally present, never as graphic shapes.\n\n"
+        f"{STYLE_ANCHOR}\n\n"
+        "CRITICAL — IMAGE MUST BE COMPLETELY CLEAN OF GRAPHIC OVERLAYS:\n"
+        "- DO NOT render ANY text, numbers, letters, dimensions, labels, legends, "
+        "captions, watermarks, arrows, callouts, badges, circles with numbers, "
+        "measuring lines, rulers, diagrams, coordinate axes or data-viz elements.\n"
+        "- DO NOT draw measuring tape, dimension arrows, ruler marks, or technical "
+        "annotations. I will compose those graphically on top of the image "
+        "afterwards in Python using Pillow.\n"
+        "- The image should look like a single product photograph, not an already "
+        "composed infographic. No text of any kind anywhere in the pixels."
+    )
+
+
 def _pick_template(slide: SlideBrief | None, default: str, position_1based: int) -> str:
     if slide and slide.template:
         return slide.template
@@ -247,3 +287,98 @@ async def generate_post_from_photos(
         )
         urls.append(url)
     return urls
+
+
+# ==========  Pipeline INFOGRAFÍAS (NB2 clean + plantilla rica) ==========
+
+
+_DEFAULT_DESC_TITLE = "Una pieza constructiva"
+
+
+async def generate_infographic_post(brief: "DesignBrief") -> list[str]:
+    """Genera una pieza infográfica (dimensions o numbered_steps).
+
+    Requiere `brief.infographic_data` populado:
+      - si tiene `dimensions` → usa template `infographic_dimensions`
+      - si tiene `steps` → usa template `numbered_steps`
+
+    El fondo (producto/escena) lo genera Nano Banana 2 con un prompt CLEAN
+    que instruye no dibujar texto. Pillow compone encima las dimensiones,
+    badges, panels y labels con datos reales.
+    """
+    data = brief.infographic_data
+    if data is None:
+        raise ValueError(
+            "generate_infographic_post requiere brief.infographic_data cargado"
+        )
+
+    # Decide template
+    if data.dimensions:
+        template_name = "infographic_dimensions"
+    elif data.steps:
+        template_name = "numbered_steps"
+    else:
+        raise ValueError("infographic_data sin dimensions ni steps")
+
+    spec = template_renderer.load_template(template_name)
+    target_w, target_h = spec.size
+
+    # 1) Generar base con NB2 clean (sin texto)
+    prompt = build_clean_infographic_prompt(brief.topic, template_name)
+    raw = await asyncio.to_thread(image_gen.generate, prompt, target_w, target_h)
+    # cargar como PIL Image
+    from PIL import Image as _PIL
+    import io as _io
+
+    base_img = _PIL.open(_io.BytesIO(raw)).convert("RGB")
+
+    # 2) Armar `values` según template
+    values: dict[str, object] = {
+        "image": base_img,
+        "title": _pick_title_from_topic_and_data(brief, data, template_name),
+    }
+
+    if template_name == "infographic_dimensions":
+        # toma la primera dimensión horizontal y la primera vertical
+        h_dim = next((d for d in data.dimensions if d.axis == "horizontal"), None)
+        v_dim = next((d for d in data.dimensions if d.axis == "vertical"), None)
+        if h_dim:
+            values["dim_top_label"] = h_dim.label
+        if v_dim:
+            values["dim_right_label"] = v_dim.label
+        values["description_title"] = (data.project_label or _DEFAULT_DESC_TITLE).upper()
+        values["description_body"] = data.description or ""
+    else:  # numbered_steps
+        for step in data.steps[:3]:
+            values[f"step_{step.number}_title"] = step.title
+            values[f"step_{step.number}_body"] = step.body
+
+    # 3) Render
+    png = template_renderer.render(
+        spec=template_name,
+        values=values,
+        target_size=(target_w, target_h),
+    )
+
+    # 4) Storage
+    key = storage.new_key(f"posts/infographic/{template_name}", "png")
+    url = storage.upload_bytes(png, key, content_type="image/png")
+    logger.info(
+        "designer.infographic_ready",
+        extra={"template": template_name, "url": url},
+    )
+    return [url]
+
+
+def _pick_title_from_topic_and_data(
+    brief: "DesignBrief",
+    data,
+    template_name: str,
+) -> str:
+    """Heurística simple para el título de la pieza. Si el brief trae un
+    slide con headline, se usa. Si no, se arma algo desde el topic."""
+    if brief.slides and brief.slides[0].headline:
+        return brief.slides[0].headline
+    if template_name == "infographic_dimensions":
+        return "Dimensiones concebidas para dominar el espacio"
+    return "Ingeniería oculta para máxima estabilidad"

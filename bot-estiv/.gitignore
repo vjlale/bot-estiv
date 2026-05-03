@@ -18,3 +18,6 @@ build/
 media_local/
 .langgraph_api/
 .arq_state/
+# Túnel local (binario grande; se descarga al primer arranque)
+tools/cloudflared.exe
+tools/LAST_WEBHOOK_URL.txt

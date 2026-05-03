@@ -32,6 +32,41 @@ class SlideBrief(BaseModel):
     )
 
 
+class DimensionSpec(BaseModel):
+    """Una dimension con valor y label humano — ej (2.20, "2,20 metros de largo")."""
+    value_cm: float = Field(description="Valor numérico en centímetros.")
+    label: str = Field(description="Texto a mostrar en la dimension line.")
+    axis: Literal["horizontal", "vertical"] = "horizontal"
+
+
+class StepItem(BaseModel):
+    """Un paso de proceso/obra para plantilla numbered_steps."""
+    number: int = Field(ge=1, le=9)
+    title: str = Field(description="Título corto, 2-4 palabras")
+    body: str = Field(description="Descripción del paso, 1-3 oraciones")
+    # punto opcional al que apunta la lead-line (normalizado 0-1 sobre el canvas)
+    anchor_x: float | None = Field(default=None, ge=0.0, le=1.0)
+    anchor_y: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class InfographicData(BaseModel):
+    """Datos estructurados para plantillas infográficas (dimensions / numbered_steps).
+
+    Si `dimensions` viene cargado, se usa la plantilla infographic_dimensions.
+    Si `steps` viene cargado, se usa la plantilla numbered_steps.
+    """
+    dimensions: list[DimensionSpec] = Field(default_factory=list)
+    steps: list[StepItem] = Field(default_factory=list)
+    description: str | None = Field(
+        default=None,
+        description="Párrafo descriptivo que va en el callout_panel",
+    )
+    project_label: str | None = Field(
+        default=None,
+        description="Label del proyecto (ej: 'Cerco 30m — Mendiolaza')",
+    )
+
+
 class DesignBrief(BaseModel):
     format: str = Field(description="ig_feed_portrait | ig_story | carousel | ...")
     pillar: Literal["durabilidad", "diseno", "experiencia"] | None = None
@@ -42,6 +77,13 @@ class DesignBrief(BaseModel):
     default_template: str = Field(
         default="editorial_hero",
         description="Plantilla por defecto si una slide no especifica una.",
+    )
+    infographic_data: InfographicData | None = Field(
+        default=None,
+        description=(
+            "Datos estructurados para plantillas infográficas. "
+            "Si está cargado, se usa pipeline NB2-clean + template infográfica."
+        ),
     )
 
 

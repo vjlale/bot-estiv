@@ -1,6 +1,6 @@
 # Atajos de desarrollo para Bot Estiv
 
-.PHONY: up down logs migrate ingest fetch-templates preview-templates dev-api dev-worker dev-dash test
+.PHONY: up down logs migrate ingest fetch-templates preview-templates dev-api dev-worker dev-dash test tunnel-whatsapp
 
 up:
 	cd infra && docker compose up -d postgres redis
@@ -34,3 +34,8 @@ dev-dash:
 
 test:
 	cd apps/api && uv run pytest
+
+# Expone http://127.0.0.1:8000 por HTTPS (Twilio necesita URL pública para /webhook/twilio).
+# Requiere la API en marcha en otra terminal: make dev-api
+tunnel-whatsapp:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-WhatsappTunnel.ps1

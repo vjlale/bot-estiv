@@ -73,13 +73,43 @@ class Slot:
 
 @dataclass
 class Decoration:
-    type: Literal["rect", "hairline", "gradient_v", "corner_brackets"]
+    type: Literal[
+        "rect",
+        "hairline",
+        "gradient_v",
+        "corner_brackets",
+        "dimension_line",
+        "numbered_badge",
+        "callout_panel",
+    ]
     bbox: Bbox
     fill: str = "#000000"
     opacity: float = 1.0
     weight: int = 2
     corner_len: int = 60  # para corner_brackets
     direction: Literal["top-down", "bottom-up"] = "bottom-up"
+    # ---- dimension_line ----
+    orientation: Literal["h", "v"] = "h"
+    tick_len: int = 12
+    label: str | None = None
+    label_font_kind: str = "body_medium"
+    label_font_size_px: int = 22
+    label_color: str = "#36454F"
+    label_bg: str | None = None  # fondo del label (ej: "#F5F1EA") para legibilidad
+    # ---- numbered_badge ----
+    number: int = 1
+    radius: int = 26
+    text_color: str = "#F5F1EA"
+    line_to: tuple[int, int] | None = None  # punto final de la lead line
+    # ---- callout_panel ----
+    panel_title: str | None = None
+    panel_body: str | None = None
+    panel_title_font_kind: str = "body_semibold"
+    panel_body_font_kind: str = "body_medium"
+    panel_title_color: str = "#36454F"
+    panel_body_color: str = "#4E5A66"
+    panel_radius: int = 8
+    panel_padding: int = 24
 
 
 @dataclass
@@ -88,6 +118,7 @@ class TemplateSpec:
     size: tuple[int, int]
     slots: dict[str, Slot]
     decorations: list[Decoration] = field(default_factory=list)
+    background_color: str = "#000000"  # color de canvas antes de dibujar image/decos
 
 
 # ==========  Plantillas BUILTIN (fallback) ==========
@@ -414,6 +445,121 @@ def _builtin_quote_card() -> TemplateSpec:
                 fill=PALETTE.naranja_fuego,
                 opacity=0.7,
                 weight=2,
+def _builtin_infographic_dimensions() -> TemplateSpec:
+    """Replicando la ref de la mesa 2.20 m — canvas landscape 1920x1080.
+
+    Slots asignados por el caller:
+      - image: producto aislado (NB2 clean)
+      - title: titular principal
+      - dim_top_label: texto de la dimensión superior (ej "2,20 metros de largo")
+      - dim_right_label: texto de la dimensión lateral
+      - description_title, description_body: panel descriptivo abajo derecha
+      - logo: el logo Gardens Wood
+    """
+    W, H = 1920, 1080
+    IMG_X1, IMG_Y1, IMG_X2, IMG_Y2 = 260, 200, 1400, 820
+
+    return TemplateSpec(
+        name="infographic_dimensions",
+        size=(W, H),
+        background_color="#F5F1EA",
+        slots={
+            "image": Slot(bbox=(IMG_X1, IMG_Y1, IMG_X2, IMG_Y2), fit="contain"),
+            "title": Slot(
+                bbox=(80, 40, W - 120, 140),
+                font_kind="heading_bold",
+                font_size_px=60,
+                color="#36454F",
+                align="left",
+                max_lines=1,
+                line_spacing=1.05,
+            ),
+            "dim_top_label": Slot(
+                bbox=(IMG_X1, IMG_Y1 - 90, IMG_X2, IMG_Y1 - 50),
+                font_kind="body_medium",
+                font_size_px=26,
+                color="#36454F",
+                align="center",
+                max_lines=1,
+            ),
+            "dim_right_label": Slot(
+                bbox=(
+                    IMG_X2 + 80,
+                    (IMG_Y1 + IMG_Y2) // 2 - 70,
+                    W - 40,
+                    (IMG_Y1 + IMG_Y2) // 2 + 70,
+                ),
+                font_kind="body_medium",
+                font_size_px=22,
+                color="#36454F",
+                align="left",
+                max_lines=3,
+                line_spacing=1.3,
+            ),
+            "description_title": Slot(
+                bbox=(1020, 860, W - 60, 900),
+                font_kind="body_semibold",
+                font_size_px=18,
+                color=PALETTE.naranja_fuego,
+                align="left",
+                uppercase=True,
+                tracking_em=0.24,
+                max_lines=1,
+            ),
+            "description_body": Slot(
+                bbox=(1020, 910, W - 60, 1020),
+                font_kind="body_medium",
+                font_size_px=22,
+                color="#4E5A66",
+                align="left",
+                max_lines=4,
+                line_spacing=1.35,
+            ),
+            "logo": Slot(bbox=(80, H - 90, 220, H - 40)),
+        },
+        decorations=[
+            # dimension line horizontal arriba de la imagen
+            Decoration(
+                type="dimension_line",
+                bbox=(IMG_X1, IMG_Y1 - 35, IMG_X2, IMG_Y1 - 25),
+                orientation="h",
+                fill="#36454F",
+                weight=2,
+                tick_len=16,
+            ),
+            # dimension line vertical a la derecha de la imagen
+            Decoration(
+                type="dimension_line",
+                bbox=(IMG_X2 + 30, IMG_Y1, IMG_X2 + 40, IMG_Y2),
+                orientation="v",
+                fill="#36454F",
+                weight=2,
+                tick_len=16,
+            ),
+            # panel de fondo para description (opacity alta → blanco hueso limpio)
+            Decoration(
+                type="callout_panel",
+                bbox=(1000, 840, W - 40, 1040),
+                fill="#F5F1EA",
+                opacity=0.96,
+                panel_radius=6,
+                panel_padding=0,  # texto manejado por slots description_*
+            ),
+            # hairline de acento arriba izq (debajo del título)
+            Decoration(
+                type="hairline",
+                bbox=(80, 160, 180, 162),
+                fill=PALETTE.naranja_fuego,
+                opacity=1.0,
+                weight=2,
+            ),
+            # hairline del panel (entre title y body)
+            Decoration(
+                type="hairline",
+                bbox=(1020, 902, 1100, 903),
+                fill=PALETTE.naranja_fuego,
+                opacity=1.0,
+                weight=1,
             ),
         ],
     )
@@ -479,9 +625,162 @@ def _builtin_before_after() -> TemplateSpec:
             Decoration(
                 type="hairline",
                 bbox=(60, img_h + 18, 140, img_h + 20),
+def _builtin_numbered_steps() -> TemplateSpec:
+    """Replicando la ref del cerco 'Ingeniería Oculta' — canvas 1920x1080.
+
+    Slots asignados por el caller:
+      - image: producto/escena (NB2 clean)
+      - title: titular
+      - step_1_title, step_1_body, step_2_*, step_3_* (texto de cada callout)
+      - logo
+    """
+    W, H = 1920, 1080
+    IMG_X1, IMG_Y1, IMG_X2, IMG_Y2 = 700, 280, 1220, 820
+
+    # posiciones de los 3 badges (centros)
+    B1_CX, B1_CY = 120, 360
+    B2_CX, B2_CY = W - 120, 360
+    B3_CX, B3_CY = W - 120, 760
+
+    # panels (cajas detras del texto de cada step)
+    P1 = (60, 410, 640, 620)
+    P2 = (W - 640, 410, W - 60, 620)
+    P3 = (W - 640, 810, W - 60, 1020)
+
+    return TemplateSpec(
+        name="numbered_steps",
+        size=(W, H),
+        background_color="#EEEBE3",
+        slots={
+            "image": Slot(bbox=(IMG_X1, IMG_Y1, IMG_X2, IMG_Y2), fit="contain"),
+            "title": Slot(
+                bbox=(80, 40, W - 80, 160),
+                font_kind="heading",
+                font_size_px=56,
+                color="#36454F",
+                align="center",
+                max_lines=1,
+            ),
+            # STEP 1
+            "step_1_title": Slot(
+                bbox=(P1[0] + 24, P1[1] + 22, P1[2] - 24, P1[1] + 62),
+                font_kind="body_semibold",
+                font_size_px=22,
+                color="#36454F",
+                align="left",
+                max_lines=1,
+            ),
+            "step_1_body": Slot(
+                bbox=(P1[0] + 24, P1[1] + 72, P1[2] - 24, P1[3] - 20),
+                font_kind="body_medium",
+                font_size_px=20,
+                color="#4E5A66",
+                align="left",
+                max_lines=6,
+                line_spacing=1.35,
+            ),
+            # STEP 2
+            "step_2_title": Slot(
+                bbox=(P2[0] + 24, P2[1] + 22, P2[2] - 24, P2[1] + 62),
+                font_kind="body_semibold",
+                font_size_px=22,
+                color="#36454F",
+                align="left",
+                max_lines=1,
+            ),
+            "step_2_body": Slot(
+                bbox=(P2[0] + 24, P2[1] + 72, P2[2] - 24, P2[3] - 20),
+                font_kind="body_medium",
+                font_size_px=20,
+                color="#4E5A66",
+                align="left",
+                max_lines=6,
+                line_spacing=1.35,
+            ),
+            # STEP 3
+            "step_3_title": Slot(
+                bbox=(P3[0] + 24, P3[1] + 22, P3[2] - 24, P3[1] + 62),
+                font_kind="body_semibold",
+                font_size_px=22,
+                color="#36454F",
+                align="left",
+                max_lines=1,
+            ),
+            "step_3_body": Slot(
+                bbox=(P3[0] + 24, P3[1] + 72, P3[2] - 24, P3[3] - 20),
+                font_kind="body_medium",
+                font_size_px=20,
+                color="#4E5A66",
+                align="left",
+                max_lines=6,
+                line_spacing=1.35,
+            ),
+            "logo": Slot(bbox=(80, H - 80, 220, H - 40)),
+        },
+        decorations=[
+            # hairline naranja debajo del título
+            Decoration(
+                type="hairline",
+                bbox=(W // 2 - 60, 170, W // 2 + 60, 172),
                 fill=PALETTE.naranja_fuego,
                 opacity=1.0,
                 weight=2,
+            ),
+            # panels detrás de cada step (quedan DEBAJO de los textos — se dibujan antes)
+            Decoration(
+                type="callout_panel",
+                bbox=P1,
+                fill="#F5F1EA",
+                opacity=0.97,
+                panel_radius=6,
+                panel_padding=0,
+            ),
+            Decoration(
+                type="callout_panel",
+                bbox=P2,
+                fill="#F5F1EA",
+                opacity=0.97,
+                panel_radius=6,
+                panel_padding=0,
+            ),
+            Decoration(
+                type="callout_panel",
+                bbox=P3,
+                fill="#F5F1EA",
+                opacity=0.97,
+                panel_radius=6,
+                panel_padding=0,
+            ),
+            # badges (se dibujan DESPUÉS para quedar por encima de las leadlines sobre panels)
+            Decoration(
+                type="numbered_badge",
+                bbox=(B1_CX - 30, B1_CY - 30, B1_CX + 30, B1_CY + 30),
+                number=1,
+                radius=30,
+                fill=PALETTE.verde_eucalipto,
+                text_color="#F5F1EA",
+                weight=2,
+                line_to=(IMG_X1 + 40, IMG_Y1 + 120),
+            ),
+            Decoration(
+                type="numbered_badge",
+                bbox=(B2_CX - 30, B2_CY - 30, B2_CX + 30, B2_CY + 30),
+                number=2,
+                radius=30,
+                fill=PALETTE.verde_eucalipto,
+                text_color="#F5F1EA",
+                weight=2,
+                line_to=(IMG_X2 - 60, IMG_Y1 + 180),
+            ),
+            Decoration(
+                type="numbered_badge",
+                bbox=(B3_CX - 30, B3_CY - 30, B3_CX + 30, B3_CY + 30),
+                number=3,
+                radius=30,
+                fill=PALETTE.verde_eucalipto,
+                text_color="#F5F1EA",
+                weight=2,
+                line_to=(IMG_X2 - 80, IMG_Y2 - 160),
             ),
         ],
     )
@@ -495,6 +794,8 @@ _BUILTIN: dict[str, TemplateSpec] = {
     "spec_card": _builtin_spec_card(),
     "quote_card": _builtin_quote_card(),
     "before_after": _builtin_before_after(),
+    "infographic_dimensions": _builtin_infographic_dimensions(),
+    "numbered_steps": _builtin_numbered_steps(),
 }
 
 
@@ -504,12 +805,21 @@ def _spec_from_dict(data: dict) -> TemplateSpec:
     slots = {
         name: Slot(**s) for name, s in (data.get("slots") or {}).items()
     }
-    decos = [Decoration(**d) for d in (data.get("decorations") or [])]
+    decos: list[Decoration] = []
+    for d in data.get("decorations") or []:
+        raw = dict(d)
+        # bbox y line_to vienen como list desde JSON → tuplear
+        if "bbox" in raw and raw["bbox"] is not None:
+            raw["bbox"] = tuple(raw["bbox"])
+        if raw.get("line_to") is not None:
+            raw["line_to"] = tuple(raw["line_to"])
+        decos.append(Decoration(**raw))
     return TemplateSpec(
         name=data["name"],
         size=tuple(data.get("size", (1080, 1350))),  # type: ignore[arg-type]
         slots=slots,
         decorations=decos,
+        background_color=data.get("background_color", "#000000"),
     )
 
 
@@ -543,6 +853,11 @@ def list_templates() -> list[str]:
 
 def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> tuple[int, int, int, int]:
     h = hex_color.lstrip("#")
+    if len(h) == 3:
+        # shortcut #RGB → #RRGGBB
+        h = "".join(c * 2 for c in h)
+    if len(h) < 6:
+        raise ValueError(f"Invalid hex color: {hex_color!r}")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return (r, g, b, int(alpha * 255))
 
@@ -574,20 +889,47 @@ def _scale_spec(spec: TemplateSpec, target_w: int, target_h: int) -> TemplateSpe
             max_lines=s.max_lines,
         )
 
-    new_decs = [
-        Decoration(
-            type=d.type,
-            bbox=scale_bbox(d.bbox),
-            fill=d.fill,
-            opacity=d.opacity,
-            weight=max(1, int(d.weight * fy)),
-            corner_len=int(d.corner_len * fy),
-            direction=d.direction,
+    new_decs = []
+    for d in spec.decorations:
+        line_to = None
+        if d.line_to is not None:
+            line_to = (int(d.line_to[0] * fx), int(d.line_to[1] * fy))
+        new_decs.append(
+            Decoration(
+                type=d.type,
+                bbox=scale_bbox(d.bbox),
+                fill=d.fill,
+                opacity=d.opacity,
+                weight=max(1, int(d.weight * fy)),
+                corner_len=int(d.corner_len * fy),
+                direction=d.direction,
+                orientation=d.orientation,
+                tick_len=int(d.tick_len * fy),
+                label=d.label,
+                label_font_kind=d.label_font_kind,
+                label_font_size_px=int(d.label_font_size_px * fy),
+                label_color=d.label_color,
+                label_bg=d.label_bg,
+                number=d.number,
+                radius=int(d.radius * fy),
+                text_color=d.text_color,
+                line_to=line_to,
+                panel_title=d.panel_title,
+                panel_body=d.panel_body,
+                panel_title_font_kind=d.panel_title_font_kind,
+                panel_body_font_kind=d.panel_body_font_kind,
+                panel_title_color=d.panel_title_color,
+                panel_body_color=d.panel_body_color,
+                panel_radius=int(d.panel_radius * fy),
+                panel_padding=int(d.panel_padding * fy),
+            )
         )
-        for d in spec.decorations
-    ]
     return TemplateSpec(
-        name=spec.name, size=(target_w, target_h), slots=new_slots, decorations=new_decs
+        name=spec.name,
+        size=(target_w, target_h),
+        slots=new_slots,
+        decorations=new_decs,
+        background_color=spec.background_color,
     )
 
 
@@ -702,23 +1044,197 @@ def _draw_decoration(base: Image.Image, deco: Decoration) -> None:
         draw.rectangle([(x2 - cl, y2 - w), (x2, y2)], fill=clr)
         draw.rectangle([(x2 - w, y2 - cl), (x2, y2)], fill=clr)
 
+    elif deco.type == "dimension_line":
+        _draw_dimension_line(base, overlay, draw, deco)
+
+    elif deco.type == "numbered_badge":
+        _draw_numbered_badge(base, overlay, draw, deco)
+
+    elif deco.type == "callout_panel":
+        _draw_callout_panel(base, overlay, draw, deco)
+
     base.alpha_composite(overlay)
+
+
+def _draw_dimension_line(
+    base: Image.Image,
+    overlay: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    deco: Decoration,
+) -> None:
+    """Línea de dimensión con tick marks perpendiculares en los extremos y
+    un label centrado (con un rect blanco detrás si `label_bg` está seteado).
+    """
+    x1, y1, x2, y2 = deco.bbox
+    clr = _hex_to_rgba(deco.fill, deco.opacity)
+    w = max(1, deco.weight)
+    tl = deco.tick_len
+
+    if deco.orientation == "h":
+        # línea horizontal centrada en (y1+y2)/2 entre x1..x2
+        cy = (y1 + y2) // 2
+        draw.rectangle([(x1, cy - w // 2), (x2, cy - w // 2 + w)], fill=clr)
+        # ticks verticales en los extremos
+        draw.rectangle(
+            [(x1, cy - tl), (x1 + w, cy + tl)], fill=clr
+        )
+        draw.rectangle(
+            [(x2 - w, cy - tl), (x2, cy + tl)], fill=clr
+        )
+    else:  # "v"
+        cx = (x1 + x2) // 2
+        draw.rectangle([(cx - w // 2, y1), (cx - w // 2 + w, y2)], fill=clr)
+        draw.rectangle(
+            [(cx - tl, y1), (cx + tl, y1 + w)], fill=clr
+        )
+        draw.rectangle(
+            [(cx - tl, y2 - w), (cx + tl, y2)], fill=clr
+        )
+
+    if deco.label:
+        font = _load_font(deco.label_font_kind, deco.label_font_size_px)
+        bb = draw.textbbox((0, 0), deco.label, font=font)
+        tw, th = bb[2] - bb[0], bb[3] - bb[1]
+        if deco.orientation == "h":
+            cx = (x1 + x2) // 2
+            tx = cx - tw // 2
+            ty = (y1 + y2) // 2 - th - 14  # arriba de la línea
+        else:
+            cy = (y1 + y2) // 2
+            tx = (x1 + x2) // 2 + 18  # a la derecha del eje
+            ty = cy - th // 2
+        # fondo optional (círculo/rectángulo blanco para legibilidad)
+        if deco.label_bg:
+            pad = 8
+            draw.rectangle(
+                [(tx - pad, ty - pad), (tx + tw + pad, ty + th + pad)],
+                fill=_hex_to_rgba(deco.label_bg, 0.92),
+            )
+        draw.text((tx, ty), deco.label, fill=_hex_to_rgba(deco.label_color, 1.0), font=font)
+
+
+def _draw_numbered_badge(
+    base: Image.Image,
+    overlay: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    deco: Decoration,
+) -> None:
+    """Círculo con número adentro; opcional lead-line a `line_to`."""
+    x1, y1, x2, y2 = deco.bbox
+    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+    r = deco.radius
+
+    # lead-line al punto indicado (ANTES del círculo para que quede por debajo)
+    if deco.line_to is not None:
+        lx, ly = deco.line_to
+        draw.line(
+            [(cx, cy), (int(lx), int(ly))],
+            fill=_hex_to_rgba(deco.fill, deco.opacity),
+            width=max(1, deco.weight),
+        )
+        # pequeño punto en el destino
+        dot_r = max(3, deco.weight + 2)
+        draw.ellipse(
+            [(int(lx) - dot_r, int(ly) - dot_r), (int(lx) + dot_r, int(ly) + dot_r)],
+            fill=_hex_to_rgba(deco.fill, deco.opacity),
+        )
+
+    # círculo del badge
+    draw.ellipse(
+        [(cx - r, cy - r), (cx + r, cy + r)],
+        fill=_hex_to_rgba(deco.fill, deco.opacity),
+    )
+
+    # número centrado
+    font = _load_font("body_bold", int(r * 1.05))
+    text = str(deco.number)
+    bb = draw.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    # correccion por baseline offset del font
+    baseline_offset = bb[1]
+    draw.text(
+        (cx - tw // 2 - bb[0], cy - th // 2 - baseline_offset),
+        text,
+        fill=_hex_to_rgba(deco.text_color, 1.0),
+        font=font,
+    )
+
+
+def _draw_callout_panel(
+    base: Image.Image,
+    overlay: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    deco: Decoration,
+) -> None:
+    """Panel translúcido con título arriba y cuerpo abajo, esquinas redondeadas."""
+    x1, y1, x2, y2 = deco.bbox
+    # panel fill
+    radius = deco.panel_radius
+    fill_rgba = _hex_to_rgba(deco.fill, deco.opacity)
+    try:
+        draw.rounded_rectangle([(x1, y1), (x2, y2)], radius=radius, fill=fill_rgba)
+    except Exception:  # noqa: BLE001 - fallback a rect si no soporta rounded
+        draw.rectangle([(x1, y1), (x2, y2)], fill=fill_rgba)
+
+    pad = deco.panel_padding
+    inner_w = (x2 - x1) - 2 * pad
+    cursor_y = y1 + pad
+
+    # título (semibold, 1 línea, sin wrap)
+    if deco.panel_title:
+        tf = _load_font(deco.panel_title_font_kind, deco.label_font_size_px)
+        tl = _wrap(
+            deco.panel_title, tf, inner_w, draw, tracking_em=0.0, max_lines=1
+        )
+        for line in tl:
+            draw.text(
+                (x1 + pad, cursor_y),
+                line,
+                fill=_hex_to_rgba(deco.panel_title_color, 1.0),
+                font=tf,
+            )
+            line_h = draw.textbbox((0, 0), line, font=tf)[3] + 6
+            cursor_y += line_h
+
+    # body (medium, wrap con max_lines reasonable según altura disponible)
+    if deco.panel_body:
+        bf_size = max(14, int(deco.label_font_size_px * 0.85))
+        bf = _load_font(deco.panel_body_font_kind, bf_size)
+        line_h = int(bf_size * 1.35)
+        remaining_h = (y2 - pad) - cursor_y
+        max_lines = max(1, remaining_h // line_h)
+        lines = _wrap(
+            deco.panel_body,
+            bf,
+            inner_w,
+            draw,
+            tracking_em=0.0,
+            max_lines=max_lines,
+        )
+        for line in lines:
+            draw.text(
+                (x1 + pad, cursor_y),
+                line,
+                fill=_hex_to_rgba(deco.panel_body_color, 1.0),
+                font=bf,
+            )
+            cursor_y += line_h
 
 
 def _draw_image_slot(base: Image.Image, slot: Slot, src: Image.Image) -> None:
     x1, y1, x2, y2 = slot.bbox
     w, h = x2 - x1, y2 - y1
     if slot.fit == "cover":
-        fitted = _cover_resize(src.convert("RGB"), w, h)
-    else:  # contain
+        fitted = _cover_resize(src.convert("RGB"), w, h).convert("RGBA")
+        base.paste(fitted, (x1, y1))
+    else:  # contain: preserva transparencia del src
         sw, sh = src.size
         ratio = min(w / sw, h / sh)
-        nw, nh = int(sw * ratio), int(sh * ratio)
-        fitted = src.resize((nw, nh), Image.LANCZOS)
-        container = Image.new("RGB", (w, h), "#000000")
-        container.paste(fitted, ((w - nw) // 2, (h - nh) // 2))
-        fitted = container
-    base.paste(fitted.convert("RGBA"), (x1, y1))
+        nw, nh = max(1, int(sw * ratio)), max(1, int(sh * ratio))
+        fitted = src.convert("RGBA").resize((nw, nh), Image.LANCZOS)
+        cx = x1 + (w - nw) // 2
+        cy = y1 + (h - nh) // 2
+        base.alpha_composite(fitted, (cx, cy))
 
 
 def _draw_text_slot(base: Image.Image, slot: Slot, text: str) -> None:
@@ -807,7 +1323,10 @@ def render(
     W, H = target_size or spec.size
     spec = _scale_spec(spec, W, H)
 
-    base = Image.new("RGBA", (W, H), "#000000FF")
+    # color de fondo del canvas (antes de imagen y decoraciones)
+    bg_hex = spec.background_color or "#000000"
+    r, g, b, _ = _hex_to_rgba(bg_hex, 1.0)
+    base = Image.new("RGBA", (W, H), (r, g, b, 255))
 
     # 1) imagen(es) de fondo
     for slot_key in ("image", "image_b"):
@@ -823,11 +1342,14 @@ def render(
     for deco in spec.decorations:
         _draw_decoration(base, deco)
 
-    # 3) textos
-    for slot_name in ("pillar_tag", "title", "subtitle"):
+    # 3) textos — renderiza cualquier slot de texto que tenga valor en `values`
+    #    (excluye los slots "especiales": image, logo)
+    for slot_name, slot in spec.slots.items():
+        if slot_name in ("image", "logo"):
+            continue
         txt = values.get(slot_name)
-        if txt and slot_name in spec.slots:
-            _draw_text_slot(base, spec.slots[slot_name], str(txt))
+        if txt:
+            _draw_text_slot(base, slot, str(txt))
 
     # 4) logo
     if "logo" in spec.slots and values.get("logo") is not False:
