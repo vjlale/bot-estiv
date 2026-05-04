@@ -11,15 +11,17 @@ import {
   LineChart,
   Image as ImageIcon,
   FolderOpen,
+  FileText,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const items = [
   { href: "/", label: "Panel", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox WhatsApp", icon: MessageSquare },
+  { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/calendar", label: "Calendario", icon: Calendar },
   { href: "/approvals", label: "Aprobaciones", icon: CheckSquare },
+  { href: "/posts", label: "Posts", icon: FileText },
   { href: "/campaigns", label: "Meta Ads", icon: Target },
   { href: "/analytics", label: "Analytics", icon: LineChart },
   { href: "/library", label: "Biblioteca obras", icon: FolderOpen },
