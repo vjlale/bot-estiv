@@ -364,7 +364,7 @@ async def node_edit_video_story(state: State) -> State:
     if channel == "telegram":
         chat_id = int(user_id.removeprefix("tg:"))
         try:
-            await tg_tool.send_photo(chat_id, video_url, "Historia procesada con look Gardens Wood ✓")
+            await tg_tool.send_video(chat_id, video_url, "Historia procesada con look Gardens Wood ✓")
         except Exception as exc:
             logger.warning("telegram.send_failed", exc_info=exc)
     else:
