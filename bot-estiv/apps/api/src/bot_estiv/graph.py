@@ -41,6 +41,7 @@ from .agents import (
     director,
     meta_ads_manager,
     trend_scout,
+    video_editor,
 )
 from .config import settings
 from .db import AsyncSessionLocal
@@ -63,6 +64,7 @@ class State(TypedDict, total=False):
     user_wa_id: str      # identificador único: "whatsapp:+54..." o "tg:12345678"
     channel: str         # "whatsapp" | "telegram"
     user_text: str
+    media_bytes: bytes   # video/foto cruda enviada por el usuario (para edit_video_story)
     routing: dict[str, Any]
     draft_copy: dict[str, Any]
     brief: dict[str, Any]
@@ -333,6 +335,52 @@ async def node_approval_decision(state: State) -> State:
     return state
 
 
+async def node_edit_video_story(state: State) -> State:
+    """Edita un video/foto enviado por el usuario: overlay de texto + logo + formato 9:16."""
+    from .tools import telegram as tg_tool
+
+    media = state.get("media_bytes")
+    if not media:
+        state["reply_text"] = (
+            "Mandame el video o foto que querés convertir en historia y "
+            "en el mismo mensaje decime el titular (ej: *Pérgola de Quebracho*)."
+        )
+        return state
+
+    headline = state.get("user_text", "Gardens Wood")
+    channel = state.get("channel", "whatsapp")
+    user_id = state["user_wa_id"]
+
+    try:
+        video_url = await video_editor.edit_story(media, headline)
+    except Exception as exc:
+        logger.warning("video_editor.failed", exc_info=exc)
+        state["reply_text"] = (
+            f"No pude procesar el video ({type(exc).__name__}). "
+            "Revisá que sea MP4/MOV/JPEG y volvé a intentar."
+        )
+        return state
+
+    if channel == "telegram":
+        chat_id = int(user_id.removeprefix("tg:"))
+        try:
+            await tg_tool.send_video(chat_id, video_url, "Historia procesada con look Gardens Wood ✓")
+        except Exception as exc:
+            logger.warning("telegram.send_failed", exc_info=exc)
+    else:
+        try:
+            whatsapp.send_media(
+                user_id,
+                "Historia procesada con look Gardens Wood. Descargala y subila a IG.",
+                [video_url],
+            )
+        except Exception as exc:
+            logger.warning("whatsapp.send_failed", exc_info=exc)
+
+    state["reply_text"] = f"Historia lista: {video_url}"
+    return state
+
+
 async def node_chitchat(state: State) -> State:
     state["reply_text"] = (
         "Hola, soy *Bot Estiv* — tu director de marketing de Gardens Wood.\n"
@@ -341,6 +389,7 @@ async def node_chitchat(state: State) -> State:
         "• _Planificá la semana_\n"
         "• _Cómo viene la campaña de pérgolas_\n"
         "• _Ideas de temporada_\n"
+        "• _Mandame un video para convertir en historia de Instagram_\n"
     )
     return state
 
@@ -349,7 +398,7 @@ def _route(state: State) -> str:
     intent = state["routing"]["intent"]
     mapping = {
         "create_post": "copywriter",
-        "edit_video_story": "chitchat",  # requiere media entrante; ver routers/webhook
+        "edit_video_story": "edit_video_story",
         "weekly_plan": "planner",
         "ads_change": "ads",
         "analytics_report": "analytics",
@@ -373,6 +422,7 @@ def build_graph():
     g.add_node("analytics", node_analytics)
     g.add_node("trends", node_trends)
     g.add_node("approval_decision", node_approval_decision)
+    g.add_node("edit_video_story", node_edit_video_story)
     g.add_node("chitchat", node_chitchat)
 
     g.add_edge(START, "router")
@@ -386,6 +436,7 @@ def build_graph():
             "analytics": "analytics",
             "trends": "trends",
             "approval_decision": "approval_decision",
+            "edit_video_story": "edit_video_story",
             "chitchat": "chitchat",
         },
     )
@@ -399,6 +450,7 @@ def build_graph():
     g.add_edge("analytics", END)
     g.add_edge("trends", END)
     g.add_edge("approval_decision", END)
+    g.add_edge("edit_video_story", END)
     g.add_edge("chitchat", END)
     return g.compile()
 
@@ -410,6 +462,7 @@ async def run_graph(
     user_text: str,
     user_wa_id: str,
     channel: str = "whatsapp",
+    media_bytes: bytes | None = None,
 ) -> State:
     state: State = {
         "user_text": user_text,
@@ -417,4 +470,6 @@ async def run_graph(
         "channel": channel,
         "messages": [],
     }
+    if media_bytes is not None:
+        state["media_bytes"] = media_bytes
     return await GRAPH.ainvoke(state)

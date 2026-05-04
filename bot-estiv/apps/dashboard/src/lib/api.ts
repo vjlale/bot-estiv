@@ -67,8 +67,25 @@ export const api = {
   listAssets: (kind?: string) =>
     http<any[]>(`/assets${kind ? `?kind=${kind}` : ""}`),
   deploymentSettings: () => http<DeploymentSettings>(`/settings/deployment`),
+  schedulePost: (postId: string, scheduledFor: string) =>
+    http(`/posts/${postId}/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ scheduled_for: scheduledFor }),
+    }),
+  retryPost: (postId: string, scheduledFor: string) =>
+    http(`/posts/${postId}/retry`, {
+      method: "POST",
+      body: JSON.stringify({ scheduled_for: scheduledFor }),
+    }),
   listConversations: () => http<any[]>(`/inbox/conversations`),
   listMessages: (convId: string) => http<any[]>(`/inbox/conversations/${convId}/messages`),
+  replyInbox: (convId: string, text: string) =>
+    http(`/inbox/conversations/${convId}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  ingestBrand: () => http<any>(`/admin/ingest-brand`, { method: "POST" }),
+  ragStatus: () => http<any>(`/admin/rag-status`),
   // ===== Fotos reales (biblioteca de obras) =====
   listSourceAssets: (projectTag?: string) =>
     http<any[]>(

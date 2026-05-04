@@ -1,12 +1,14 @@
-"""Inbox: hilos de conversación WhatsApp para el dashboard."""
+"""Inbox: hilos de conversación WhatsApp/Telegram para el dashboard."""
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..db import get_session
 from ..models import Conversation, Message
 
@@ -47,3 +49,45 @@ async def list_messages(conv_id: uuid.UUID, session: AsyncSession = Depends(get_
         }
         for m in rows
     ]
+
+
+class ReplyRequest(BaseModel):
+    text: str
+
+
+@router.post("/conversations/{conv_id}/reply")
+async def reply_to_conversation(
+    conv_id: uuid.UUID,
+    body: ReplyRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Envía un mensaje manual desde el dashboard al usuario (WA o Telegram)."""
+    convo = (
+        await session.execute(select(Conversation).where(Conversation.id == conv_id))
+    ).scalar_one_or_none()
+    if convo is None:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    channel = getattr(convo, "channel", "whatsapp")
+    user_id = convo.user_wa_id
+
+    if channel == "telegram":
+        from ..tools import telegram as tg_tool
+        chat_id_str = user_id.removeprefix("tg:")
+        if not chat_id_str.lstrip("-").isdigit():
+            raise HTTPException(status_code=422, detail=f"chat_id inválido: {user_id}")
+        await tg_tool.send_text(int(chat_id_str), body.text)
+    else:
+        from ..tools import whatsapp as wa_tool
+        wa_tool.send_text(user_id, body.text)
+
+    session.add(
+        Message(
+            conversation_id=conv_id,
+            role="assistant",
+            agent="dashboard",
+            content=body.text,
+        )
+    )
+    await session.commit()
+    return {"ok": True, "channel": channel, "to": user_id}

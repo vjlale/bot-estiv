@@ -13,6 +13,10 @@ import logging
 import re
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+_limiter = Limiter(key_func=get_remote_address)
 from sqlalchemy import select
 
 from ..config import settings
@@ -233,10 +237,49 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
         },
     )
 
-    # --- Si vinieron fotos: ingesta + confirmación, sin llamar al graph ---
+    # --- Si vinieron fotos/videos ---
     if incoming.num_media > 0:
+        # Detectar si es video (el content type de Twilio está en MediaContentType0..N)
+        media_content_types = [
+            form.get(f"MediaContentType{i}", "") for i in range(incoming.num_media)
+        ]
+        has_video = any("video" in ct for ct in media_content_types)
+
         project_tag = _extract_project_tag(incoming.body)
         saved = await _ingest_photos(incoming, project_tag)
+
+        # Video → pasar al graph para edit_video_story
+        if has_video:
+            try:
+                raw = await whatsapp.download_media(incoming.media_urls[0])
+            except Exception as exc:
+                logger.warning("whatsapp.video_download_failed", exc_info=exc)
+                raw = None
+            try:
+                result = await run_graph(
+                    incoming.body or "editar historia",
+                    incoming.from_wa,
+                    channel="whatsapp",
+                    media_bytes=raw,
+                )
+            except Exception as exc:
+                logger.exception("graph.failed")
+                whatsapp.send_text(
+                    incoming.from_wa,
+                    f"Uy, no pude procesar el video ({type(exc).__name__}). Probá de nuevo.",
+                )
+                return
+            reply = result.get("reply_text", "Listo.")
+            try:
+                whatsapp.send_text(incoming.from_wa, reply)
+                await _log_message(
+                    convo.id, "assistant", reply, agent="video_editor",
+                    metadata={"processed_twilio_message_sid": incoming.message_sid},
+                )
+            except Exception as exc:
+                logger.warning("whatsapp.reply_failed", exc_info=exc)
+            return
+
         if _is_photo_edit_request(incoming.body):
             try:
                 edited_url = await _edit_first_photo(incoming)
@@ -343,6 +386,7 @@ async def _handle(form: dict, signature_urls: list[str], signature: str | None) 
 
 
 @router.post("/twilio", response_class=Response)
+@_limiter.limit("60/minute")
 async def twilio_webhook(
     request: Request,
     bg: BackgroundTasks,
@@ -437,6 +481,36 @@ async def _handle_telegram(body: dict) -> None:
         incoming.text or f"[{len(incoming.photo_file_ids)} foto(s)]",
     )
 
+    # --- Video: pasar al graph para edit_video_story ---
+    video_file_id = (incoming.raw or {}).get("message", {}).get("video", {}).get("file_id")
+    if video_file_id:
+        try:
+            raw_bytes = await telegram.download_file(video_file_id)
+        except Exception as exc:
+            logger.warning("telegram.video_download_failed", exc_info=exc)
+            raw_bytes = None
+        try:
+            result = await run_graph(
+                incoming.text or "editar historia",
+                user_id,
+                channel="telegram",
+                media_bytes=raw_bytes,
+            )
+        except Exception as exc:
+            logger.exception("graph.failed")
+            await telegram.send_text(
+                incoming.chat_id,
+                f"No pude procesar el video ({type(exc).__name__}). Probá de nuevo.",
+            )
+            return
+        reply = result.get("reply_text", "Listo.")
+        await _log_message(convo.id, "assistant", reply, agent="video_editor")
+        try:
+            await telegram.send_text(incoming.chat_id, reply)
+        except Exception as exc:
+            logger.warning("telegram.reply_failed", exc_info=exc)
+        return
+
     # --- Fotos: ingestar y confirmar ---
     if incoming.photo_file_ids:
         project_tag = _extract_project_tag(incoming.text)
@@ -490,6 +564,7 @@ async def _handle_telegram(body: dict) -> None:
 
 
 @router.post("/telegram", response_class=Response)
+@_limiter.limit("60/minute")
 async def telegram_webhook(request: Request, bg: BackgroundTasks):
     """Webhook de Telegram. Registrar con: POST /webhook/telegram/setup."""
     body = await request.json()

@@ -96,6 +96,21 @@ async def send_photo(
     })
 
 
+async def send_video(
+    chat_id: int | str,
+    video_url: str,
+    caption: str = "",
+) -> dict:
+    """Envía un video por URL pública (MP4)."""
+    return await _post("sendVideo", {
+        "chat_id": chat_id,
+        "video": video_url,
+        "caption": caption,
+        "parse_mode": "Markdown",
+        "supports_streaming": True,
+    })
+
+
 async def send_approval_request(
     chat_id: int | str,
     preview_urls: list[str],

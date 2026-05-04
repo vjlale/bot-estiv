@@ -93,6 +93,8 @@ async def publish_scheduled(ctx) -> dict:
                 )
             )
         ).scalars().all()
+        published_titles: list[str] = []
+        failed_titles: list[str] = []
         for p in rows:
             try:
                 urls = [a.url for a in await _post_assets(s, p.id)]
@@ -107,11 +109,33 @@ async def publish_scheduled(ctx) -> dict:
                 p.published_at = now
                 p.meta_post_id = meta_id
                 published += 1
+                published_titles.append(p.title)
             except Exception as exc:
                 logger.exception("publish_failed")
                 p.status = PostStatus.FAILED
                 p.brand_check = {"publish_error": str(exc)}
+                failed_titles.append(f"{p.title} ({exc})")
         await s.commit()
+
+    if published_titles and settings.twilio_whatsapp_to:
+        try:
+            whatsapp.send_text(
+                settings.twilio_whatsapp_to,
+                "✅ *Posts publicados en Instagram:*\n" + "\n".join(f"• {t}" for t in published_titles),
+            )
+        except Exception as exc:
+            logger.warning("notify.publish_ok_failed", exc_info=exc)
+
+    if failed_titles and settings.twilio_whatsapp_to:
+        try:
+            whatsapp.send_text(
+                settings.twilio_whatsapp_to,
+                "⚠️ *Publicación fallida — revisá el dashboard:*\n"
+                + "\n".join(f"• {t}" for t in failed_titles),
+            )
+        except Exception as exc:
+            logger.warning("notify.publish_fail_failed", exc_info=exc)
+
     return {"published": published}
 
 
