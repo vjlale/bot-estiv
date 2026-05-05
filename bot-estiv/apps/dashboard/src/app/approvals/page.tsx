@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardBody, CardHeader, Badge } from "@/components/Card";
 import { api } from "@/lib/api";
 import { ApprovalActions } from "./actions";
