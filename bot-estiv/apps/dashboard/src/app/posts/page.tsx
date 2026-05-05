@@ -4,12 +4,12 @@ import { useEffect, useState, useTransition } from "react";
 import { Card, CardBody, CardHeader, Badge } from "@/components/Card";
 import { api, type Post } from "@/lib/api";
 
-const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "default"> = {
   published: "success",
   approved: "success",
-  scheduled: "neutral",
+  scheduled: "default",
   pending_approval: "warning",
-  draft: "neutral",
+  draft: "default",
   failed: "danger",
   rejected: "danger",
 };
